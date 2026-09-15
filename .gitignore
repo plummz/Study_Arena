@@ -15,5 +15,8 @@ android/local.properties
 android/**/build/
 android/app/google-services.json
 godot/**/.godot/
-dist/*.jar
+dist/
+dungeon-remaster-*.png
+dungeon-*-test.txt
+dungeon-*-launch.txt
 *.log
