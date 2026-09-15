@@ -1,0 +1,14 @@
+{
+  "appId": "ph.edu.wit.studyarena",
+  "appName": "Study Arena",
+  "webDir": "web",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#345e46"
+    },
+    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] }
+  }
+}

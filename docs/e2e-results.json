@@ -1,0 +1,21 @@
+{
+  "passed": [
+    "E2E01 Guest dashboard loads; competition hidden",
+    "E2E02 Login, encrypted workspace, onboarding and skip diagnostic",
+    "E2E02A Private text upload creates and opens a local reviewer",
+    "E2E03 Quiz downloaded; password absent from plaintext IndexedDB record",
+    "E2E04 Solo answer and explanation work without network",
+    "E2E05 Service-worker offline reload and encrypted workspace unlock",
+    "E2E06 Quiz resumes from the saved next question",
+    "E2E07 Focus start/pause/finish; short session saved without reward",
+    "E2E08 360px mobile reflow without horizontal overflow",
+    "E2E09 Dark mode saved in the encrypted workspace",
+    "E2E11 Teacher authors and submits an explained true/false quiz through labeled fields",
+    "E2E12 Room resource sharing selects a named resource and submits successfully",
+    "E2E14 Eight free companions render; Coral unlocks, equips and reacts",
+    "E2E15 Companion drags within the app, saves its position and uses character-specific movement speech",
+    "E2E13 Purchased hat equips and appears on the profile avatar",
+    "E2E10 No uncaught browser exceptions"
+  ],
+  "errors": []
+}

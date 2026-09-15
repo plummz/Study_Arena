@@ -1,0 +1,19 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.deps": true,
+      "**/runtime": true
+    },
+    "java.project.sourcePaths": [
+      "server/src/main/java"
+    ],
+    "java.project.referencedLibraries": [
+      ".deps/*.jar"
+    ]
+  }
+}

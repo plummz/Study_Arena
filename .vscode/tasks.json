@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Study Arena demo",
+      "type": "process",
+      "command": "node",
+      "args": ["scripts/start-windows.mjs"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": []
+    },
+    {
+      "label": "Build Java source on Windows",
+      "type": "process",
+      "command": "node",
+      "args": ["scripts/build-windows.mjs"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": []
+    }
+  ]
+}

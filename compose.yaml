@@ -1,0 +1,29 @@
+services:
+  arena:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - arena_data:/data
+    expose:
+      - '8080'
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  arena_data:
+  caddy_data:
+  caddy_config:

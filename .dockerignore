@@ -1,0 +1,9 @@
+node_modules
+.deps
+build
+data*
+.env
+.git
+android
+docs
+*.zip

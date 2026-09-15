@@ -1,0 +1,742 @@
+{
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "auth": "public",
+      "idempotency": false,
+      "request": "{email,password,school_id,display_name,age_band,consent_ref?}",
+      "response": "{message}",
+      "errors": "VALIDATION,REGISTRATION_UNAVAILABLE,CONSENT_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "auth": "public",
+      "idempotency": false,
+      "request": "{email,password,device?}",
+      "response": "{token,expires,user}",
+      "errors": "INVALID_CREDENTIALS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/verify",
+      "auth": "public",
+      "idempotency": false,
+      "request": "{token}",
+      "response": "{message}",
+      "errors": "TOKEN_INVALID"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/reset-request",
+      "auth": "public",
+      "idempotency": false,
+      "request": "{email}",
+      "response": "{message}",
+      "errors": "RATE_LIMITED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/reset",
+      "auth": "public",
+      "idempotency": false,
+      "request": "{token,password}",
+      "response": "{message}",
+      "errors": "TOKEN_INVALID,VALIDATION"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/resend",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{message}",
+      "errors": "RATE_LIMITED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "auth": "student",
+      "idempotency": false,
+      "request": "{}",
+      "response": "{ok}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/me",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{user}",
+      "errors": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/me",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{version,display_name,course,year,subjects[],timezone,daily_goal,weekly_goal,competition}",
+      "response": "{user}",
+      "errors": "VERSION_CONFLICT,VALIDATION"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/devices",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{items:[{id,device,created,expires,current}]}",
+      "errors": ""
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/me/devices/{id}",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{ok}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/export",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{profile,sessions,attempts,answers,reviews,decks,cards,materials,memberships,inventory,ledger,claims,evidence,settings,badges,streak_days}",
+      "errors": "REAUTH_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/delete",
+      "auth": "student",
+      "idempotency": false,
+      "request": "{confirm:'DELETE'}",
+      "response": "{message,delete_after}",
+      "errors": "REAUTH_REQUIRED,ACTIVE_ROOM,PENDING_CLAIM"
+    },
+    {
+      "method": "GET",
+      "path": "/api/topics",
+      "auth": "public",
+      "idempotency": false,
+      "request": "—",
+      "response": "{items:[Topic]}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/decks",
+      "auth": "public",
+      "idempotency": false,
+      "request": "?q=&topic=&offset=&limit=",
+      "response": "{items:[Deck]}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/decks/{id}",
+      "auth": "public",
+      "idempotency": false,
+      "request": "?offset=&limit=",
+      "response": "{deck,cards:[Card],total}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/decks",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{title,topic_id,cards:[{front,back,image_id?,image_alt?}],source?,license?}",
+      "response": "{deck}",
+      "errors": "VALIDATION,DUPLICATE_CARD"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/decks/{id}",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{version,title,topic_id,cards:[Card],source?,license?,allow_duplicates?}",
+      "response": "{deck,conflict_copy?}",
+      "errors": "FORBIDDEN,VALIDATION"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/decks/{id}",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{ok}",
+      "errors": "FORBIDDEN"
+    },
+    {
+      "method": "POST",
+      "path": "/api/decks/{id}/share",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{visibility:'public'|'room'|'private',room_id?,source,license}",
+      "response": "{deck}",
+      "errors": "FORBIDDEN,VALIDATION"
+    },
+    {
+      "method": "POST",
+      "path": "/api/decks/{id}/clone",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{deck}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/import/preview",
+      "auth": "student",
+      "idempotency": false,
+      "request": "{text,delimiter:','|'tab'}",
+      "response": "{valid:[{front,back,row}],errors:[{row,message}],duplicates:[number]}",
+      "errors": "VALIDATION"
+    },
+    {
+      "method": "GET",
+      "path": "/api/quizzes",
+      "auth": "public",
+      "idempotency": false,
+      "request": "?q=&topic=&offset=&limit=",
+      "response": "{items:[Quiz]}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/quizzes/{id}",
+      "auth": "public",
+      "idempotency": false,
+      "request": "—",
+      "response": "{quiz,questions:[Question with accepted answers and explanation]}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/quizzes",
+      "auth": "moderator",
+      "idempotency": true,
+      "request": "{title,topic_id,duration?,source,license,questions:[{kind,prompt,options[],accepted[],explanation,topic_id?}]}",
+      "response": "{quiz}",
+      "errors": "VALIDATION"
+    },
+    {
+      "method": "GET",
+      "path": "/api/materials",
+      "auth": "public",
+      "idempotency": false,
+      "request": "?q=&course=&subject=&year=&file_type=&offset=&limit=",
+      "response": "{items:[Material metadata]}",
+      "errors": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/materials",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{title,topic_id,year,body,source,license}",
+      "response": "{material}",
+      "errors": "VALIDATION"
+    },
+    {
+      "method": "POST",
+      "path": "/api/materials/{id}/file",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{offset,base64,complete:boolean,sha256,file_type:'pdf'|'png'|'jpeg'}",
+      "response": "{offset,complete}",
+      "errors": "VALIDATION,UPLOAD_OFFSET,CHECKSUM_MISMATCH,QUOTA"
+    },
+    {
+      "method": "GET",
+      "path": "/api/materials/{id}",
+      "auth": "public",
+      "idempotency": false,
+      "request": "?offset=byte offset",
+      "response": "{material,base64?,offset?,next_offset?,complete?}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "GET",
+      "path": "/api/shop",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{items:[CatalogItem],inventory,claims,wallet}",
+      "errors": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/shop/{id}/purchase",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{rules_version?}",
+      "response": "{inventory?|claim?,wallet}",
+      "errors": "INSUFFICIENT_FUNDS,OUT_OF_STOCK,AGE_RESTRICTED,EMAIL_UNVERIFIED,RULES_CHANGED,ALREADY_CLAIMED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/inventory/{id}/equip",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{ok}",
+      "errors": "NOT_OWNED,INVALID_ITEM"
+    },
+    {
+      "method": "POST",
+      "path": "/api/inventory/{id}/freeze",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{ok,day}",
+      "errors": "INVALID_ITEM,ALREADY_PROTECTED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/claims/{id}/cancel",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{claim,wallet}",
+      "errors": "INVALID_STATE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{items:[Notification],settings}",
+      "errors": ""
+    },
+    {
+      "method": "PUT",
+      "path": "/api/notifications/settings",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{reminders,streak,invitations,challenges,rewards,quiet_start,quiet_end,reminder_time,daily_cap}",
+      "response": "{settings}",
+      "errors": "VALIDATION"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/{id}/read",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{ok}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/wallet",
+      "auth": "student",
+      "idempotency": false,
+      "request": "?offset=&limit=",
+      "response": "{wallet,ledger:[LedgerEntry]}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/study/sessions",
+      "auth": "student",
+      "idempotency": false,
+      "request": "?offset=&limit=",
+      "response": "{items:[StudySession with own notes]}",
+      "errors": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/study/sessions",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{topic_id,notes?}",
+      "response": "{session}",
+      "errors": "ACTIVE_SESSION"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/study/sessions/{id}",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{action:'heartbeat'|'pause'|'resume'|'complete'|'discard',notes?}",
+      "response": "{session,wallet}",
+      "errors": "INVALID_STATE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/study/offline",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{id,topic_id,started,ended,elapsed,timezone,notes}",
+      "response": "{session,wallet}",
+      "errors": "VALIDATION,SESSION_CONFLICT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cards/{id}/review",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{known:boolean,occurred?}",
+      "response": "{schedule,rewarded,wallet}",
+      "errors": "VALIDATION,NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/quizzes/{id}/attempts",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{timed:boolean}",
+      "response": "{attempt,questions}",
+      "errors": "EMPTY_QUIZ"
+    },
+    {
+      "method": "GET",
+      "path": "/api/attempts/{id}",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{attempt,questions,answers}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/attempts/{id}/answer",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{question_id,answer}",
+      "response": "{correct,accepted,explanation,late}",
+      "errors": "INVALID_STATE,QUESTION_NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/attempts/{id}/finish",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{discard?:boolean}",
+      "response": "{attempt,questions,answers,wallet}",
+      "errors": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/quizzes/{id}/offline",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{id,version,started,ended,timed,answers:[{question_id,answer,elapsed}]}",
+      "response": "{attempt,questions,answers,wallet}",
+      "errors": "CONTENT_CHANGED,VALIDATION"
+    },
+    {
+      "method": "GET",
+      "path": "/api/progress",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{topics:[{mastery,evidence_count,label,confidence,suggested_minutes}],history,wallet,streak,today_minutes,week_minutes,badges,levels_enabled}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/rooms",
+      "auth": "student",
+      "idempotency": false,
+      "request": "?topic=&offset=&limit=",
+      "response": "{mine,matching}",
+      "errors": "FEATURE_DISABLED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rooms",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{title,topic_id}",
+      "response": "{room,code}",
+      "errors": "VALIDATION,FEATURE_DISABLED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rooms/join",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{code?|room_id?}",
+      "response": "{room}",
+      "errors": "INVALID_INVITE,ROOM_FULL,SKILL_BAND_MISMATCH"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rooms/{id}",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{room,roster,messages,resources}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/rooms/{id}",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{action:'schedule'|'timer'|'rotate'|'transfer'|'remove'|'disband'|'restore',scheduled?,minutes?,user_id?}",
+      "response": "{room?,code?,ok?}",
+      "errors": "FORBIDDEN,INVALID_STATE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rooms/{id}/leave",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{ok}",
+      "errors": "OWNER_TRANSFER_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rooms/{id}/messages",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{body}",
+      "response": "{message,support?}",
+      "errors": "RATE_LIMITED,NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rooms/{id}/resources",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{kind:'deck'|'material',resource_id}",
+      "response": "{ok}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/users/{id}/block",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{blocked:boolean}",
+      "response": "{ok}",
+      "errors": "VALIDATION"
+    },
+    {
+      "method": "POST",
+      "path": "/api/duels/queue",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{topic_id,bot?:boolean}",
+      "response": "{duel?|queued,wait_seconds?}",
+      "errors": "COMPETITION_HIDDEN,EMAIL_UNVERIFIED,ACTIVE_DUEL,COOLDOWN"
+    },
+    {
+      "method": "GET",
+      "path": "/api/duels/current",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{duel,questions,answers?,result?}|{queued,wait_seconds}",
+      "errors": "COMPETITION_HIDDEN,EMAIL_UNVERIFIED"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/duels/queue",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{ok}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/duels/{id}",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{duel,questions,answers?,result?}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/duels/{id}/answer",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{question_id,answer}",
+      "response": "{accepted,duel}",
+      "errors": "INVALID_STATE,DEADLINE_EXPIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/duels/{id}/forfeit",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{duel}",
+      "errors": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{kind,target_id,reason}",
+      "response": "{report}",
+      "errors": "NOT_FOUND,RATE_LIMITED"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{items:[own reports]}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin",
+      "auth": "moderator",
+      "idempotency": false,
+      "request": "—",
+      "response": "{content_queue,reports,aggregate,flags?,users?,claims?,catalog?,ledger?,audit?,risk?}",
+      "errors": "FORBIDDEN"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/content/{kind}/{id}",
+      "auth": "moderator",
+      "idempotency": false,
+      "request": "—",
+      "response": "{item,cards?|questions?}",
+      "errors": "FORBIDDEN"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/content/{kind}/{id}",
+      "auth": "moderator",
+      "idempotency": true,
+      "request": "{status:'approved'|'quarantined',reason}",
+      "response": "{ok}",
+      "errors": "FORBIDDEN,SELF_APPROVAL,EMPTY_CONTENT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/reports/{id}",
+      "auth": "moderator",
+      "idempotency": true,
+      "request": "{action:'dismiss'|'hide'|'warn',reason}",
+      "response": "{ok}",
+      "errors": "FORBIDDEN"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/flags/{id}",
+      "auth": "admin",
+      "idempotency": true,
+      "request": "{enabled:boolean,reason}",
+      "response": "{flag}",
+      "errors": "REAUTH_REQUIRED,POLICY_REQUIRED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/users/{id}",
+      "auth": "admin",
+      "idempotency": true,
+      "request": "{action:'warn'|'suspend'|'restore'|'reset_band'|'role'|'consent',reason,role?,band?,consent_ref?}",
+      "response": "{ok}",
+      "errors": "VALIDATION,SELF_ACTION"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/cohorts",
+      "auth": "admin",
+      "idempotency": true,
+      "request": "{cohort_id,title,user_id,moderator:boolean,reason}",
+      "response": "{ok}",
+      "errors": "VALIDATION"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/catalog",
+      "auth": "admin",
+      "idempotency": true,
+      "request": "{title,kind,price,stock?,adult_only,rules,rules_version,sponsor,value,reason}",
+      "response": "{item}",
+      "errors": "VALIDATION"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/catalog/{id}",
+      "auth": "admin",
+      "idempotency": true,
+      "request": "{stock,active,reason}",
+      "response": "{item}",
+      "errors": "VALIDATION"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/claims/{id}",
+      "auth": "admin",
+      "idempotency": true,
+      "request": "{action:'approve'|'deny'|'fulfill',reason,eligibility_ref?,receipt?}",
+      "response": "{claim}",
+      "errors": "INVALID_STATE,ELIGIBILITY_REQUIRED,SELF_APPROVAL"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ledger",
+      "auth": "admin",
+      "idempotency": true,
+      "request": "{user_id,xp,coins,reason,origin}",
+      "response": "{wallet}",
+      "errors": "NEGATIVE_BALANCE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/push/register",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{token,platform:android}",
+      "response": "{ok}",
+      "errors": "VALIDATION"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "auth": "public",
+      "idempotency": false,
+      "request": "—",
+      "response": "{status,demo,server_time}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/config",
+      "auth": "public",
+      "idempotency": false,
+      "request": "—",
+      "response": "{flags,earning_rules,support,api_origin}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/contracts",
+      "auth": "public",
+      "idempotency": false,
+      "request": "—",
+      "response": "{endpoints:[EndpointContract]}",
+      "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/demo/mail",
+      "auth": "public",
+      "idempotency": false,
+      "request": "?email=synthetic address",
+      "response": "{items:[{subject,body}]}",
+      "errors": ""
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{$SITE_DOMAIN} {
+    encode zstd gzip
+    request_body {
+        max_size 2MB
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+    }
+    reverse_proxy arena:8080 {
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 30s
+        }
+    }
+}
