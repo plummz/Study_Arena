@@ -229,6 +229,7 @@ try {
   const coralCard=page.locator("article.companion-card").filter({has:page.getByRole("heading",{name:"Coral",exact:true})});
   await coralCard.getByRole("button",{name:"Unlock Coral free",exact:true}).click();
   await page.locator('#companion-dock[aria-label^="Coral,"]').waitFor();
+  await page.waitForFunction(() => document.querySelector("#companion-bubble")?.textContent?.includes("Coral joined"));
   assert.match(await page.locator("#companion-bubble").textContent(),/Coral joined/);
   assert.ok((await page.locator("article.companion-card.selected").getByRole("heading").textContent()).includes("Coral"));
   await page.screenshot({path:"docs/screenshots/desktop-companions.png",fullPage:true});
