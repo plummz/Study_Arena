@@ -56,6 +56,11 @@ func _build_body() -> void:
 		"coral": [Color("ee6455"), Color("fff0dc")], "sky": [Color("4b91df"), Color("d9efff")],
 		"plum": [Color("7c4ea3"), Color("f8dccb")], "sunny": [Color("f5a42f"), Color("ffc34e")],
 		"mint": [Color("58b993"), Color("f7dfc8")], "nova": [Color("263b83"), Color("f8ddc7")],
+		"ember": [Color("e95b35"), Color("ffd0a1")], "bubbles": [Color("ee86a7"), Color("ffd2dc")],
+		"byte": [Color("26999b"), Color("d8ffff")], "clover": [Color("65a84c"), Color("fff0d6")],
+		"mochi": [Color("d7a86e"), Color("fff0cf")], "comet": [Color("6b8bc7"), Color("e9f4ff")],
+		"pebble": [Color("6f7680"), Color("a9adb0")], "melody": [Color("e96f9d"), Color("ffd9e8")],
+		"taro": [Color("7650a6"), Color("e9d7c3")], "sol": [Color("e9a52c"), Color("ffd47b")],
 	}
 	var palette: Array = palettes.get(companion_id, palettes.moss)
 	var cloth := StandardMaterial3D.new()
@@ -67,7 +72,7 @@ func _build_body() -> void:
 	var boot := StandardMaterial3D.new()
 	boot.albedo_color = Color("342336")
 	head = _sphere_part("Head", Vector3(0.66, 0.62, 0.6), Vector3(0, 1.75, 0), skin)
-	var round_body := companion_id in ["moss", "sky", "sunny"]
+	var round_body := companion_id in ["moss", "sky", "sunny", "bubbles", "mochi", "pebble", "melody", "sol"]
 	if round_body:
 		_sphere_part("Body", Vector3(0.86, 0.88, 0.66), Vector3(0, 1.03, 0.08), cloth)
 	else:
@@ -120,6 +125,55 @@ func _add_companion_identity(primary: Material, accent: Material) -> void:
 		var shell := _sphere_part("Shell", Vector3(0.72, 0.76, 0.28), Vector3(0, 1.04, 0.48), primary)
 		shell.rotation.x = 0.08
 		_part("Neckerchief", Vector3(0.65, 0.14, 0.52), Vector3(0, 1.38, -0.15), accent).rotation.z = 0.12
+	elif companion_id == "ember":
+		_add_pointed_ears(primary)
+		_add_horns(_plain_material(Color("fff0bf")))
+		_add_wings(primary)
+		_add_tail(primary)
+		_part("ScholarScarf", Vector3(0.72, 0.15, 0.52), Vector3(0, 1.42, -0.16), _plain_material(Color("f6b83f")))
+	elif companion_id == "bubbles":
+		for side in [-1.0, 1.0]:
+			for y in [1.68, 1.86, 2.04]:
+				var gill := _part("Gill", Vector3(0.34, 0.1, 0.1), Vector3(side * 0.47, y, 0), _plain_material(Color("ff5f9d")))
+				gill.rotation.z = side * (y - 1.86) * 1.2
+		_add_tail(_plain_material(Color("e97ba6")))
+		_add_glasses()
+	elif companion_id == "byte":
+		_part("ScreenFace", Vector3(0.72, 0.46, 0.08), Vector3(0, 1.82, -0.57), _plain_material(Color("153243")))
+		_part("Antenna", Vector3(0.07, 0.42, 0.07), Vector3(0.18, 2.28, 0), primary).rotation.z = -0.18
+		_sphere_part("AntennaLight", Vector3(0.12, 0.12, 0.12), Vector3(0.22, 2.49, 0), _plain_material(Color("63f4e6")))
+		for side in [-1.0, 1.0]: _sphere_part("EarPod", Vector3(0.14, 0.24, 0.2), Vector3(side * 0.48, 1.84, 0), primary)
+	elif companion_id == "clover":
+		_add_long_ears(primary)
+		_part("Satchel", Vector3(0.5, 0.55, 0.18), Vector3(0.35, 0.95, -0.36), _plain_material(Color("9a6236")))
+		_add_book(_plain_material(Color("d9a537")))
+	elif companion_id == "mochi":
+		_add_round_ears(primary)
+		_part("Neckerchief", Vector3(0.7, 0.15, 0.52), Vector3(0, 1.4, -0.15), _plain_material(Color("e46d4f")))
+		_part("Backpack", Vector3(0.72, 0.7, 0.28), Vector3(0, 1.05, 0.4), _plain_material(Color("4e91a7")))
+	elif companion_id == "comet":
+		_add_pointed_ears(primary)
+		_add_tail(_plain_material(Color("c7d6ef")))
+		_part("SpacePack", Vector3(0.72, 0.72, 0.28), Vector3(0, 1.08, 0.4), _plain_material(Color("dce8f6")))
+		_sphere_part("ChestStar", Vector3(0.13, 0.13, 0.05), Vector3(0, 1.18, -0.49), _plain_material(Color("ffd552")))
+	elif companion_id == "pebble":
+		for side in [-1.0, 1.0]: _sphere_part("RockShoulder", Vector3(0.28, 0.28, 0.25), Vector3(side * 0.5, 1.34, 0), primary)
+		_sphere_part("AmberCore", Vector3(0.18, 0.18, 0.07), Vector3(0, 1.13, -0.48), _plain_material(Color("ffbd3e")))
+	elif companion_id == "melody":
+		_add_wings(primary)
+		_add_round_ears(_plain_material(Color("784563")))
+		for side in [-1.0, 1.0]: _sphere_part("Headphone", Vector3(0.15, 0.28, 0.2), Vector3(side * 0.48, 1.86, 0), _plain_material(Color("714e9b")))
+		_part("Headband", Vector3(0.72, 0.1, 0.58), Vector3(0, 2.12, 0), _plain_material(Color("714e9b")))
+	elif companion_id == "taro":
+		_add_pointed_ears(primary)
+		_add_tail(primary)
+		_add_glasses()
+		_part("ToolBelt", Vector3(0.86, 0.16, 0.5), Vector3(0, 0.9, 0), _plain_material(Color("9b6a38")))
+	elif companion_id == "sol":
+		_add_round_ears(primary)
+		_sphere_part("Mane", Vector3(0.82, 0.78, 0.5), Vector3(0, 1.83, 0.08), _plain_material(Color("be6728")))
+		head.position.z = -0.15
+		_part("HeroCape", Vector3(1.0, 1.12, 0.16), Vector3(0, 1.06, 0.35), _plain_material(Color("d84a42")))
 	else:
 		_part("HairLeft", Vector3(0.25, 0.72, 0.3), Vector3(-0.38, 1.74, 0.05), primary)
 		_part("HairRight", Vector3(0.25, 0.72, 0.3), Vector3(0.38, 1.74, 0.05), primary)
@@ -138,11 +192,49 @@ func _build_face(skin: Material, primary: Material, ink_material: Material) -> v
 	_sphere_part("RightPupil", Vector3(0.075, 0.11, 0.035), Vector3(0.2, 1.81, -0.62), ink)
 	_sphere_part("LeftBlush", Vector3(0.1, 0.055, 0.025), Vector3(-0.36, 1.62, -0.57), blush)
 	_sphere_part("RightBlush", Vector3(0.1, 0.055, 0.025), Vector3(0.36, 1.62, -0.57), blush)
-	if companion_id in ["moss", "sky"]:
+	if companion_id in ["moss", "sky", "melody"]:
 		var beak := _part("Beak", Vector3(0.18, 0.14, 0.16), Vector3(0, 1.61, -0.61), _plain_material(Color("efa82f")))
 		beak.rotation.x = 0.25
 	else:
 		_part("Smile", Vector3(0.22, 0.055, 0.04), Vector3(0, 1.59, -0.61), ink)
+
+func _add_pointed_ears(material: Material) -> void:
+	for side in [-1.0, 1.0]:
+		var ear := _part("PointedEar", Vector3(0.24, 0.42, 0.18), Vector3(side * 0.31, 2.2, 0), material)
+		ear.rotation.z = side * 0.35
+
+func _add_long_ears(material: Material) -> void:
+	for side in [-1.0, 1.0]:
+		var ear := _part("LongEar", Vector3(0.22, 0.72, 0.18), Vector3(side * 0.25, 2.42, 0.02), material)
+		ear.rotation.z = side * 0.16
+
+func _add_round_ears(material: Material) -> void:
+	for side in [-1.0, 1.0]: _sphere_part("RoundEar", Vector3(0.23, 0.23, 0.16), Vector3(side * 0.42, 2.04, 0), material)
+
+func _add_horns(material: Material) -> void:
+	for side in [-1.0, 1.0]:
+		var horn := _part("Horn", Vector3(0.13, 0.38, 0.13), Vector3(side * 0.22, 2.35, 0.04), material)
+		horn.rotation.z = side * 0.25
+
+func _add_wings(material: Material) -> void:
+	_part("LeftWing", Vector3(0.55, 0.55, 0.14), Vector3(-0.58, 1.2, 0.18), material).rotation.z = -0.48
+	_part("RightWing", Vector3(0.55, 0.55, 0.14), Vector3(0.58, 1.2, 0.18), material).rotation.z = 0.48
+
+func _add_tail(material: Material) -> void:
+	accessory = Node3D.new()
+	accessory.name = "AnimatedTail"
+	accessory.position = Vector3(0, 0.9, 0.3)
+	body_root.add_child(accessory)
+	for i in 3:
+		var piece := MeshInstance3D.new()
+		piece.name = "TailPiece%d" % i
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(0.2, 0.5, 0.2)
+		mesh.material = material
+		piece.mesh = mesh
+		piece.position = Vector3(0.2 + i * 0.17, i * 0.18, 0)
+		piece.rotation.z = -0.55 - i * 0.12
+		accessory.add_child(piece)
 
 func _add_book(material: Material) -> void:
 	var book := _part("Book", Vector3(0.62, 0.5, 0.12), Vector3(0, 1.03, -0.38), material)
@@ -234,7 +326,7 @@ func _animate_body(delta: float, amount: float, running: bool) -> void:
 
 func celebrate() -> void:
 	var tween := create_tween()
-	if companion_id in ["moss", "sky"]:
+	if companion_id in ["moss", "sky", "ember", "melody"]:
 		for i in 3:
 			tween.tween_property(left_arm, "rotation:z", -1.2, 0.1)
 			tween.parallel().tween_property(right_arm, "rotation:z", 1.2, 0.1)

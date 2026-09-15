@@ -17,7 +17,7 @@ final class Dungeon {
         "/api/dungeon/launch",
         "student",
         true,
-        "{companion:moss|lumi|coral|sky|plum|sunny|mint|nova,difficulty:easy|average|hard|hell}",
+        "{companion:moss|lumi|coral|sky|plum|sunny|mint|nova|ember|bubbles|byte|clover|mochi|comet|pebble|melody|taro|sol,difficulty:easy|average|hard|hell}",
         "{launched,already_running,companion,difficulty}",
         "VALIDATION,DUNGEON_UNAVAILABLE,DUNGEON_LAUNCH_FAILED",
         r -> launch(r.body));
@@ -25,7 +25,7 @@ final class Dungeon {
 
   private synchronized Object launch(Map<String, Object> body) {
     String companion =
-        choice(body, "companion", "moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova");
+        choice(body, "companion", "moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova", "ember", "bubbles", "byte", "clover", "mochi", "comet", "pebble", "melody", "taro", "sol");
     String difficulty = choice(body, "difficulty", "easy", "average", "hard", "hell");
     require(
         Files.isRegularFile(project.resolve("project.godot")),
@@ -72,7 +72,7 @@ final class Dungeon {
     Path source = project.getParent().getParent().resolve("web").resolve("assets").resolve("companions");
     Path destination = project.resolve("assets").resolve("companions");
     Files.createDirectories(destination);
-    for (String id : List.of("moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova")) {
+    for (String id : List.of("moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova", "ember", "bubbles", "byte", "clover", "mochi", "comet", "pebble", "melody", "taro", "sol")) {
       Path image = source.resolve(id + ".png");
       if (Files.isRegularFile(image))
         Files.copy(image, destination.resolve(image.getFileName()), StandardCopyOption.REPLACE_EXISTING);

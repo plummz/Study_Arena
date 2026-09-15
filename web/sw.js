@@ -1,4 +1,4 @@
-const VERSION = "study-arena-shell-v6-dungeon-remaster";
+const VERSION = "study-arena-shell-v7-eighteen-companions";
 const SHELL = [
   "/",
   "/index.html",
@@ -22,6 +22,16 @@ const SHELL = [
   "/assets/companions/sunny.png",
   "/assets/companions/mint.png",
   "/assets/companions/nova.png",
+  "/assets/companions/ember.png",
+  "/assets/companions/bubbles.png",
+  "/assets/companions/byte.png",
+  "/assets/companions/clover.png",
+  "/assets/companions/mochi.png",
+  "/assets/companions/comet.png",
+  "/assets/companions/pebble.png",
+  "/assets/companions/melody.png",
+  "/assets/companions/taro.png",
+  "/assets/companions/sol.png",
 ];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(VERSION).then((cache) => cache.addAll(SHELL)));

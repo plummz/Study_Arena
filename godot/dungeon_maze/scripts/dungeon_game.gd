@@ -6,6 +6,7 @@ const CartoonActor = preload("res://scripts/cartoon_actor.gd")
 const GRID_SIZE := 31
 const CELL_SIZE := 4.0
 const ENCOUNTER_COUNT := 100
+const COMPANION_IDS := ["moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova", "ember", "bubbles", "byte", "clover", "mochi", "comet", "pebble", "melody", "taro", "sol"]
 const DIFFICULTIES := {
 	"easy": {"label": "Easy", "seconds": 1800, "mistakes": 10, "hint": 2},
 	"average": {"label": "Average", "seconds": 2700, "mistakes": 7, "hint": 3},
@@ -49,7 +50,7 @@ func _ready() -> void:
 	rng.randomize()
 	selected_companion = _load_companion_choice()
 	var launch_companion := _argument_value("--companion=")
-	if launch_companion in ["moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova"]:
+	if launch_companion in COMPANION_IDS:
 		selected_companion = launch_companion
 		_save_companion_choice(selected_companion)
 	_build_environment()
@@ -691,15 +692,21 @@ func _show_companion_picker() -> void:
 	heading.add_theme_font_size_override("font_size", 26)
 	stack.add_child(heading)
 	var note := Label.new()
-	note.text = "All eight companions are free. Your choice is remembered for the next dungeon run."
+	note.text = "All eighteen companions are free. Your choice is remembered for the next dungeon run."
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stack.add_child(note)
 	var grid_box := GridContainer.new()
 	grid_box.columns = 4
+	grid_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid_box.add_theme_constant_override("h_separation", 10)
 	grid_box.add_theme_constant_override("v_separation", 10)
-	stack.add_child(grid_box)
-	var companion_names := {"moss": "Moss", "lumi": "Lumi", "coral": "Coral", "sky": "Sky", "plum": "Plum", "sunny": "Sunny", "mint": "Mint", "nova": "Nova"}
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(704, 480)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	stack.add_child(scroll)
+	scroll.add_child(grid_box)
+	var companion_names := {"moss": "Moss", "lumi": "Lumi", "coral": "Coral", "sky": "Sky", "plum": "Plum", "sunny": "Sunny", "mint": "Mint", "nova": "Nova", "ember": "Ember", "bubbles": "Bubbles", "byte": "Byte", "clover": "Clover", "mochi": "Mochi", "comet": "Comet", "pebble": "Pebble", "melody": "Melody", "taro": "Taro", "sol": "Sol"}
 	for id: String in companion_names:
 		var choice := Button.new()
 		choice.text = "%s%s" % [companion_names[id], " · selected" if id == selected_companion else ""]
@@ -727,7 +734,7 @@ func _load_companion_choice() -> String:
 	var settings := ConfigFile.new()
 	if settings.load("user://dungeon_settings.cfg") == OK:
 		var saved := String(settings.get_value("companion", "selected", "moss"))
-		if saved in ["moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova"]:
+		if saved in COMPANION_IDS:
 			return saved
 	return "moss"
 
