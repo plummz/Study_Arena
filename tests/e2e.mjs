@@ -225,14 +225,14 @@ try {
   await page.setViewportSize({width:1440,height:1040});
   await page.getByRole("navigation",{name:"Main",exact:true}).getByRole("button",{name:"Rewards",exact:true}).click();
   await page.locator(".companion-card").first().waitFor();
-  assert.equal(await page.locator(".companion-card").count(),8);
+  assert.equal(await page.locator(".companion-card").count(),18);
   const coralCard=page.locator("article.companion-card").filter({has:page.getByRole("heading",{name:"Coral",exact:true})});
   await coralCard.getByRole("button",{name:"Unlock Coral free",exact:true}).click();
   await page.locator('#companion-dock[aria-label^="Coral,"]').waitFor();
   assert.match(await page.locator("#companion-bubble").textContent(),/Coral joined/);
   assert.ok((await page.locator("article.companion-card.selected").getByRole("heading").textContent()).includes("Coral"));
   await page.screenshot({path:"docs/screenshots/desktop-companions.png",fullPage:true});
-  results.push("E2E14 Eight free companions render; Coral unlocks, equips and reacts");
+  results.push("E2E14 Eighteen free companions render; Coral unlocks, equips and reacts");
   const dock=page.locator("#companion-dock"),
     beforeDrag=await dock.boundingBox();
   assert.ok(beforeDrag);
