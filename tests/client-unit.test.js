@@ -95,6 +95,22 @@ test("SYNC06 admin responses never enter offline cache", async () => {
   await new Client(vault).request("/api/admin");
   assert.deepEqual(vault.data.cache, {});
 });
+test("SYNC07 HTML hosting responses become a helpful backend error", async () => {
+  globalThis.fetch = async () =>
+    new Response("<!doctype html><title>GitHub Pages</title>", {
+      status: 404,
+      headers: { "Content-Type": "text/html" },
+    });
+  await assert.rejects(
+    () => new Client().request("/api/auth/register", { method: "POST" }),
+    (error) => {
+      assert.equal(error.code, "BACKEND_UNAVAILABLE");
+      assert.doesNotMatch(error.message, /Unexpected token|valid JSON/);
+      assert.match(error.message, /Account creation and sign-in/);
+      return true;
+    },
+  );
+});
 
 import { previewCSV } from "../web/import.js";
 test("CSV04 offline quoted multiline Unicode import and duplicates", () => {

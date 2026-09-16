@@ -1,4 +1,8 @@
-import { API_URL } from "./config.js";
+import {
+  API_CONFIGURED,
+  API_UNAVAILABLE_MESSAGE,
+  API_URL,
+} from "./config.js";
 import { uuid } from "./vault.js";
 export class ApiError extends Error {
   constructor(message, code, status) {
@@ -18,6 +22,12 @@ export class Client {
     { method = "GET", body, key, cache = true, timeout = 10000 } = {},
   ) {
     if (method === "GET" && cache && !navigator.onLine && this.vault?.data.cache[path]) return { ...this.vault.data.cache[path].data, offline: true };
+    if (!API_CONFIGURED && path.startsWith("/api/"))
+      throw new ApiError(
+        API_UNAVAILABLE_MESSAGE,
+        "BACKEND_UNAVAILABLE",
+        503,
+      );
     const controller = new AbortController(),
       timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -31,7 +41,23 @@ export class Client {
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      const data = await response.json();
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        const contentType = response.headers.get("content-type") || "";
+        const looksLikeHtml =
+          contentType.includes("text/html") ||
+          responseText.trimStart().startsWith("<");
+        throw new ApiError(
+          looksLikeHtml
+            ? API_UNAVAILABLE_MESSAGE
+            : "The Study Arena server returned an unreadable response. Please try again.",
+          looksLikeHtml ? "BACKEND_UNAVAILABLE" : "INVALID_RESPONSE",
+          503,
+        );
+      }
       if (!response.ok)
         throw new ApiError(
           data.error?.message || "Request failed.",

@@ -24,9 +24,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
       - name: Prepare static site
+        env:
+          STUDY_ARENA_API_URL: ${{ vars.STUDY_ARENA_API_URL }}
         run: |
           mkdir -p _site
           cp -R web/. _site/
+          node -e 'const fs=require("fs"); const value=process.env.STUDY_ARENA_API_URL || ""; fs.writeFileSync("_site/runtime-config.js", `// Public configuration only. Never place API keys or secrets in this file.\nglobalThis.STUDY_ARENA_API_URL = ${JSON.stringify(value)};\n`);'
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v4
         with:
