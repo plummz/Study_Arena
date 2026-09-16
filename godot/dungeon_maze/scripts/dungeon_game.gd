@@ -4,8 +4,9 @@ const PlayerAvatar = preload("res://scripts/player_avatar.gd")
 const ThirdPersonCamera = preload("res://scripts/third_person_camera.gd")
 const CartoonActor = preload("res://scripts/cartoon_actor.gd")
 const GRID_SIZE := 31
-const CELL_SIZE := 4.0
+const CELL_SIZE := 5.4
 const ENCOUNTER_COUNT := 100
+const WALL_HEIGHT := 5.8
 const COMPANION_IDS := ["moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova", "ember", "bubbles", "byte", "clover", "mochi", "comet", "pebble", "melody", "taro", "sol"]
 const DIFFICULTIES := {
 	"easy": {"label": "Easy", "seconds": 1800, "mistakes": 10, "hint": 2},
@@ -17,6 +18,8 @@ const DIFFICULTIES := {
 var rng := RandomNumberGenerator.new()
 var grid := PackedByteArray()
 var walkable: Array[Vector2i] = []
+var entrance_cell := Vector2i(1, 1)
+var exit_cell := Vector2i(GRID_SIZE - 2, GRID_SIZE - 2)
 var encounters: Array[Node3D] = []
 var questions: Array[Dictionary] = []
 var player: PlayerAvatar
@@ -69,11 +72,14 @@ func _smoke_test() -> void:
 	assert(questions.size() == ENCOUNTER_COUNT)
 	assert(encounters.size() == ENCOUNTER_COUNT)
 	assert(get_tree().get_nodes_in_group("dungeon_generated").size() >= 126)
+	assert(_branch_count() >= 18)
+	assert(get_tree().get_nodes_in_group("puddle").size() == 14)
+	assert(get_tree().get_nodes_in_group("snake").size() == 10)
 	assert(is_instance_valid(player.left_arm) and is_instance_valid(player.right_leg))
 	var sample_actor: CartoonActor = encounters[0].get_meta("actor")
 	assert(is_instance_valid(sample_actor) and sample_actor.has_node("AnimatedBody/CartoonFace/LeftEye"))
 	assert(get_node_or_null("EntrancePortal/MagicPortal") != null)
-	print("DUNGEON_SMOKE_PASS questions=100 encounters=100 traps=24 cartoon_faces=true medieval_props=true segmented_player=true")
+	print("DUNGEON_SMOKE_PASS questions=100 encounters=100 traps=24 puddles=14 snakes=10 branches=%d tall_walls=true smooth_camera=true jump=true" % _branch_count())
 	get_tree().quit()
 
 func _process(delta: float) -> void:
@@ -130,6 +136,7 @@ func _start_game(mode: String) -> void:
 	_generate_maze()
 	_build_dungeon_meshes()
 	_spawn_traps()
+	_spawn_puddles_and_snakes()
 	_spawn_player()
 	_spawn_encounters()
 	_build_set_dressing()
@@ -159,11 +166,34 @@ func _generate_maze() -> void:
 		grid[_index(between)] = 0
 		grid[_index(chosen)] = 0
 		stack.append(chosen)
+	# A perfect maze has only one route between points. Open extra joins to create
+	# loops, alternate routes, risky shortcuts and genuine multi-way decisions.
+	var loop_candidates: Array[Vector2i] = []
+	for z in range(1, GRID_SIZE - 1):
+		for x in range(1, GRID_SIZE - 1):
+			var cell := Vector2i(x, z)
+			if grid[_index(cell)] == 0: continue
+			var horizontal := grid[_index(cell + Vector2i.LEFT)] == 0 and grid[_index(cell + Vector2i.RIGHT)] == 0
+			var vertical := grid[_index(cell + Vector2i.UP)] == 0 and grid[_index(cell + Vector2i.DOWN)] == 0
+			if horizontal or vertical: loop_candidates.append(cell)
+	loop_candidates.shuffle()
+	for i in mini(64, loop_candidates.size()):
+		grid[_index(loop_candidates[i])] = 0
 	walkable.clear()
 	for z in GRID_SIZE:
 		for x in GRID_SIZE:
 			if grid[_index(Vector2i(x, z))] == 0:
 				walkable.append(Vector2i(x, z))
+	entrance_cell = Vector2i(1, 1)
+	exit_cell = entrance_cell
+	var farthest := -1
+	for cell in walkable:
+		var distance := absi(cell.x - entrance_cell.x) + absi(cell.y - entrance_cell.y)
+		if distance > farthest:
+			farthest = distance
+			exit_cell = cell
+	walkable.erase(entrance_cell)
+	walkable.erase(exit_cell)
 	for i in range(walkable.size() - 1, 1, -1):
 		var j := rng.randi_range(1, i)
 		var temp := walkable[i]
@@ -188,9 +218,9 @@ func _build_dungeon_meshes() -> void:
 				(wall_light if (x * 3 + z) % 5 == 0 else wall_dark).append(pos)
 	_create_multimesh("StoneFloorLight", floor_light, Vector3(CELL_SIZE - 0.05, 0.18, CELL_SIZE - 0.05), Color("414354"), -0.12)
 	_create_multimesh("StoneFloorDark", floor_dark, Vector3(CELL_SIZE - 0.05, 0.18, CELL_SIZE - 0.05), Color("323442"), -0.12)
-	_create_multimesh("DungeonWalls", wall_dark, Vector3(CELL_SIZE - 0.04, 2.7, CELL_SIZE - 0.04), Color("282735"), 1.25)
-	_create_multimesh("DungeonWallHighlights", wall_light, Vector3(CELL_SIZE - 0.04, 2.7, CELL_SIZE - 0.04), Color("393545"), 1.25)
-	_create_multimesh("WallCrown", wall_cells, Vector3(CELL_SIZE + 0.12, 0.24, CELL_SIZE + 0.12), Color("6a5862"), 2.62)
+	_create_multimesh("DungeonWalls", wall_dark, Vector3(CELL_SIZE - 0.04, WALL_HEIGHT, CELL_SIZE - 0.04), Color("282735"), WALL_HEIGHT * 0.5 - 0.1)
+	_create_multimesh("DungeonWallHighlights", wall_light, Vector3(CELL_SIZE - 0.04, WALL_HEIGHT, CELL_SIZE - 0.04), Color("393545"), WALL_HEIGHT * 0.5 - 0.1)
+	_create_multimesh("WallCrown", wall_cells, Vector3(CELL_SIZE + 0.14, 0.34, CELL_SIZE + 0.14), Color("806873"), WALL_HEIGHT - 0.08)
 	var body := StaticBody3D.new()
 	body.name = "DungeonCollision"
 	body.add_to_group("dungeon_generated")
@@ -204,9 +234,9 @@ func _build_dungeon_meshes() -> void:
 	for pos in wall_cells:
 		var shape_node := CollisionShape3D.new()
 		var shape := BoxShape3D.new()
-		shape.size = Vector3(CELL_SIZE, 2.7, CELL_SIZE)
+		shape.size = Vector3(CELL_SIZE, WALL_HEIGHT, CELL_SIZE)
 		shape_node.shape = shape
-		shape_node.position = pos + Vector3.UP * 1.25
+		shape_node.position = pos + Vector3.UP * (WALL_HEIGHT * 0.5 - 0.1)
 		body.add_child(shape_node)
 
 func _spawn_traps() -> void:
@@ -216,6 +246,7 @@ func _spawn_traps() -> void:
 		trap.collision_layer = 4
 		trap.collision_mask = 2
 		trap.position = _world(walkable[ENCOUNTER_COUNT + i + 5])
+		trap.set_meta("trap_type", ["spikes", "flame", "poison", "blade"][i % 4])
 		var shape_node := CollisionShape3D.new()
 		var shape := BoxShape3D.new()
 		shape.size = Vector3(1.7, 0.35, 1.7)
@@ -223,18 +254,27 @@ func _spawn_traps() -> void:
 		trap.add_child(shape_node)
 		var spikes := MeshInstance3D.new()
 		var mesh := CylinderMesh.new()
-		mesh.top_radius = 0.0
-		mesh.bottom_radius = 0.72
-		mesh.height = 0.65
+		mesh.top_radius = 0.0 if i % 4 == 0 else 0.18
+		mesh.bottom_radius = 0.72 if i % 4 == 0 else 0.38
+		mesh.height = 0.65 if i % 4 == 0 else 1.2
 		var material := StandardMaterial3D.new()
-		material.albedo_color = Color("6f7280")
+		material.albedo_color = [Color("6f7280"), Color("ff7a32"), Color("77d267"), Color("bfc6d4")][i % 4]
+		if i % 4 in [1, 2]:
+			material.emission_enabled = true
+			material.emission = material.albedo_color * 1.8
 		material.metallic = 0.55
 		mesh.material = material
 		spikes.mesh = mesh
 		spikes.position.y = 0.28
 		trap.add_child(spikes)
+		var warning := _mesh_part(trap, "WarningPlate", Vector3(2.2, 0.06, 2.2), Vector3(0, 0.03, 0), Color("6d2735"), true)
+		warning.transparency = 0.28
+		var pulse := create_tween().set_loops()
+		pulse.tween_property(spikes, "position:y", 0.58, 0.45).set_trans(Tween.TRANS_SINE)
+		pulse.tween_property(spikes, "position:y", 0.08, 0.55).set_trans(Tween.TRANS_SINE)
 		trap.body_entered.connect(_on_trap_entered.bind(trap))
 		trap.add_to_group("dungeon_generated")
+		trap.add_to_group("trap")
 		add_child(trap)
 
 func _on_trap_entered(body: Node3D, trap: Area3D) -> void:
@@ -248,6 +288,85 @@ func _on_trap_entered(body: Node3D, trap: Area3D) -> void:
 	var tween := create_tween()
 	tween.tween_property(trap, "position:y", -0.7, 0.35)
 	tween.tween_callback(trap.queue_free)
+
+func _spawn_puddles_and_snakes() -> void:
+	for i in 14:
+		var puddle := Node3D.new()
+		puddle.name = "WaterPuddle_%02d" % i
+		puddle.position = _world(walkable[150 + i * 4]) + Vector3.UP * 0.015
+		puddle.add_to_group("dungeon_generated")
+		puddle.add_to_group("puddle")
+		add_child(puddle)
+		var water := MeshInstance3D.new()
+		var disc := CylinderMesh.new()
+		disc.top_radius = 1.15 + (i % 3) * 0.18
+		disc.bottom_radius = disc.top_radius
+		disc.height = 0.035
+		var water_material := _dungeon_material(Color("529bc4aa"), true)
+		water_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		water_material.metallic = 0.35
+		water_material.roughness = 0.16
+		disc.material = water_material
+		water.mesh = disc
+		puddle.add_child(water)
+		var ripple := create_tween().set_loops()
+		ripple.tween_property(water, "scale", Vector3(1.08, 1.0, 0.94), 1.2).set_trans(Tween.TRANS_SINE)
+		ripple.tween_property(water, "scale", Vector3(0.94, 1.0, 1.08), 1.2).set_trans(Tween.TRANS_SINE)
+	for i in 10:
+		var snake := Area3D.new()
+		snake.name = "CartoonSnake_%02d" % i
+		snake.position = _world(walkable[215 + i * 5])
+		snake.collision_layer = 4
+		snake.collision_mask = 2
+		snake.add_to_group("dungeon_generated")
+		snake.add_to_group("snake")
+		add_child(snake)
+		var snake_shape := CollisionShape3D.new()
+		var snake_box := BoxShape3D.new()
+		snake_box.size = Vector3(2.3, 0.35, 1.25)
+		snake_shape.shape = snake_box
+		snake_shape.position.y = 0.18
+		snake.add_child(snake_shape)
+		var snake_color := Color("65bf63") if i % 2 == 0 else Color("d49a42")
+		for segment in 6:
+			var bead := MeshInstance3D.new()
+			var sphere := SphereMesh.new()
+			sphere.radius = 0.23 + (5 - segment) * 0.015
+			sphere.height = sphere.radius * 2.0
+			sphere.material = _dungeon_material(snake_color, false)
+			bead.mesh = sphere
+			bead.position = Vector3(-0.85 + segment * 0.34, 0.24, sin(float(segment) * 1.7) * 0.22)
+			snake.add_child(bead)
+		var head := MeshInstance3D.new()
+		var head_mesh := SphereMesh.new()
+		head_mesh.radius = 0.38
+		head_mesh.height = 0.7
+		head_mesh.material = _dungeon_material(snake_color.lightened(0.12), false)
+		head.mesh = head_mesh
+		head.position = Vector3(1.15, 0.38, 0)
+		snake.add_child(head)
+		for side in [-1.0, 1.0]:
+			var eye := MeshInstance3D.new()
+			var eye_mesh := SphereMesh.new()
+			eye_mesh.radius = 0.075
+			eye_mesh.height = 0.15
+			eye_mesh.material = _dungeon_material(Color("fff8df"), true)
+			eye.mesh = eye_mesh
+			eye.position = Vector3(1.43, 0.48, side * 0.17)
+			snake.add_child(eye)
+		snake.body_entered.connect(_on_snake_entered.bind(snake))
+		var slither := create_tween().set_loops()
+		slither.tween_property(snake, "rotation:y", 0.18, 0.7).set_trans(Tween.TRANS_SINE)
+		slither.tween_property(snake, "rotation:y", -0.18, 0.7).set_trans(Tween.TRANS_SINE)
+
+func _on_snake_entered(body: Node3D, snake: Area3D) -> void:
+	if body != player or bool(snake.get_meta("spent", false)) or not running: return
+	snake.set_meta("spent", true)
+	time_left = maxf(0.0, time_left - 12.0)
+	player.take_hit()
+	message_label.text = "A dungeon snake struck! Jump over the next one. −12 seconds."
+	_play_enemy_skill(snake)
+	create_tween().tween_property(snake, "scale", Vector3.ZERO, 0.35).tween_callback(snake.queue_free)
 
 func _create_multimesh(label: String, positions: Array[Vector3], size: Vector3, color: Color, y: float) -> void:
 	var instance := MultiMeshInstance3D.new()
@@ -291,8 +410,8 @@ func _build_set_dressing() -> void:
 		var pulse := create_tween().set_loops()
 		pulse.tween_property(flame, "scale", Vector3(0.82, 1.18, 0.82), 0.32 + i * 0.009)
 		pulse.tween_property(flame, "scale", Vector3.ONE, 0.25 + i * 0.007)
-	_build_gateway(_world(Vector2i(1, 1)) + Vector3(0, 0, CELL_SIZE * 0.72), Color("68dbff"), "EntrancePortal")
-	_build_gateway(_world(walkable.back()), Color("d997ff"), "VictoryPortal")
+	_build_gateway(_world(entrance_cell) + Vector3(0, 0, CELL_SIZE * 0.72), Color("68dbff"), "EntrancePortal", "ENTRANCE")
+	_build_gateway(_world(exit_cell), Color("d997ff"), "VictoryPortal", "EXIT")
 	for i in 10:
 		var prop := Node3D.new()
 		prop.name = "DungeonProp_%02d" % i
@@ -303,7 +422,7 @@ func _build_set_dressing() -> void:
 		_mesh_part(prop, "Crate", Vector3(0.8, 0.75, 0.8), Vector3(0, 0.38, 0), Color("6e4931"), false)
 		_mesh_part(prop, "Band", Vector3(0.9, 0.12, 0.88), Vector3(0, 0.4, 0), Color("b7844f"), false)
 
-func _build_gateway(at: Vector3, color: Color, label: String) -> void:
+func _build_gateway(at: Vector3, color: Color, label: String, display_text: String) -> void:
 	var gate := Node3D.new()
 	gate.name = label
 	gate.position = at
@@ -325,6 +444,15 @@ func _build_gateway(at: Vector3, color: Color, label: String) -> void:
 	portal.rotation.x = PI / 2.0
 	gate.add_child(portal)
 	create_tween().set_loops().tween_property(portal, "rotation:z", TAU, 4.5).from(0.0)
+	var sign := Label3D.new()
+	sign.name = "GatewayLabel"
+	sign.text = display_text
+	sign.font_size = 64
+	sign.outline_size = 12
+	sign.modulate = color
+	sign.position = Vector3(0, 3.65, 0)
+	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	gate.add_child(sign)
 
 func _mesh_part(parent: Node3D, label: String, size: Vector3, at: Vector3, color: Color, glow: bool) -> MeshInstance3D:
 	var item := MeshInstance3D.new()
@@ -353,7 +481,7 @@ func _spawn_player() -> void:
 	player = PlayerAvatar.new()
 	player.name = "Player"
 	player.companion_id = selected_companion
-	player.position = _world(Vector2i(1, 1)) + Vector3.UP * 0.05
+	player.position = _world(entrance_cell) + Vector3.UP * 0.05
 	add_child(player)
 	camera_rig = ThirdPersonCamera.new()
 	camera_rig.name = "ThirdPersonCamera"
@@ -487,32 +615,40 @@ func _play_slay_effect(target: Node3D) -> void:
 	var beam := _effect_beam(start, finish, Color("75e8ff"))
 	beam.scale = Vector3(0.1, 0.1, 0.1)
 	var flash := _effect_sphere(finish, Color("ffd86b"), 0.35)
+	var ring_a := _effect_ring(finish, Color("75e8ff"), 0.45)
+	var ring_b := _effect_ring(finish + Vector3.UP * 0.18, Color("ffd86b"), 0.3)
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(beam, "scale", Vector3.ONE, 0.12).set_trans(Tween.TRANS_BACK)
 	tween.tween_property(flash, "scale", Vector3.ONE * 4.8, 0.48).set_delay(0.1)
 	tween.tween_property(flash, "transparency", 1.0, 0.48).set_delay(0.1)
+	tween.tween_property(ring_a, "scale", Vector3.ONE * 5.5, 0.62).set_delay(0.06).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tween.tween_property(ring_a, "transparency", 1.0, 0.62).set_delay(0.06)
+	tween.tween_property(ring_b, "scale", Vector3.ONE * 7.0, 0.72).set_delay(0.13).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tween.tween_property(ring_b, "transparency", 1.0, 0.72).set_delay(0.13)
 	for i in 9:
 		var angle := TAU * float(i) / 9.0
 		var star := _effect_sphere(finish, Color("fff0a6"), 0.09)
 		tween.tween_property(star, "global_position", finish + Vector3(cos(angle) * 2.4, sin(angle * 2.0) + 1.0, sin(angle) * 2.4), 0.55).set_delay(0.1)
 		tween.tween_callback(star.queue_free).set_delay(0.66)
 	tween.chain().tween_interval(0.15)
-	tween.tween_callback(func(): beam.queue_free(); flash.queue_free(); target.queue_free())
+	tween.tween_callback(func(): beam.queue_free(); flash.queue_free(); ring_a.queue_free(); ring_b.queue_free(); target.queue_free())
 
 func _play_enemy_skill(source: Node3D) -> void:
-	var actor: CartoonActor = source.get_meta("actor")
+	var actor: CartoonActor = source.get_meta("actor", null)
 	if is_instance_valid(actor): actor.cast_attack()
 	var origin := source.global_position + Vector3.UP * 1.3
 	var destination := player.global_position + Vector3.UP
 	var projectile := _effect_sphere(origin, Color("e74279"), 0.31)
 	var trail := _effect_beam(origin, destination, Color("812b9e"))
+	var warning_ring := _effect_ring(destination, Color("ef4d79"), 0.55)
 	trail.transparency = 0.25
 	trail.scale = Vector3(0.35, 0.35, 1.0)
 	var tween := create_tween()
+	tween.tween_property(warning_ring, "scale", Vector3.ONE * 2.4, 0.16).set_trans(Tween.TRANS_BACK)
 	tween.tween_interval(0.16)
 	tween.tween_property(projectile, "global_position", destination, 0.36).set_trans(Tween.TRANS_EXPO)
 	tween.tween_property(projectile, "scale", Vector3.ONE * 2.3, 0.09)
-	tween.tween_callback(func(): projectile.queue_free(); trail.queue_free(); camera_rig.shake(0.2, 0.34); _flash_damage())
+	tween.tween_callback(func(): projectile.queue_free(); trail.queue_free(); warning_ring.queue_free(); camera_rig.shake(0.16, 0.28); _flash_damage())
 
 func _effect_beam(from: Vector3, to: Vector3, color: Color) -> MeshInstance3D:
 	var beam := MeshInstance3D.new()
@@ -546,6 +682,21 @@ func _effect_sphere(at: Vector3, color: Color, radius: float) -> MeshInstance3D:
 	effects_root.add_child(effect)
 	return effect
 
+func _effect_ring(at: Vector3, color: Color, radius: float) -> MeshInstance3D:
+	var effect := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = radius
+	torus.outer_radius = radius + 0.12
+	torus.rings = 20
+	torus.ring_segments = 10
+	torus.material = _dungeon_material(color, true)
+	effect.mesh = torus
+	effect.position = at
+	effect.rotation.x = PI / 2.0
+	effect.transparency = 0.08
+	effects_root.add_child(effect)
+	return effect
+
 func _complete_maze() -> void:
 	running = false
 	player.controls_enabled = false
@@ -573,6 +724,17 @@ func _update_hud() -> void:
 	progress_label.text = "Questions %d / 100" % answered
 	coin_label.text = "Coins %d" % coins
 	life_label.text = "Wrong answers left %d" % mistakes_left
+
+func _branch_count() -> int:
+	var result := 0
+	for cell in walkable:
+		var exits := 0
+		for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var next: Vector2i = cell + direction
+			if next.x >= 0 and next.y >= 0 and next.x < GRID_SIZE and next.y < GRID_SIZE and grid[_index(next)] == 0:
+				exits += 1
+		if exits >= 3: result += 1
+	return result
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()

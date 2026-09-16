@@ -5,6 +5,10 @@ signal reached_encounter(encounter_id: int)
 
 const WALK_SPEED := 4.0
 const RUN_SPEED := 7.2
+const ACCELERATION := 18.0
+const DECELERATION := 24.0
+const JUMP_VELOCITY := 7.0
+const GRAVITY := 19.0
 var controls_enabled := true
 var move_phase := 0.0
 var camera_yaw := 0.0
@@ -25,20 +29,29 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if not controls_enabled or action_locked:
-		velocity = Vector3.ZERO
+		velocity.x = move_toward(velocity.x, 0.0, DECELERATION * delta)
+		velocity.z = move_toward(velocity.z, 0.0, DECELERATION * delta)
+		if not is_on_floor(): velocity.y -= GRAVITY * delta
 		_animate_body(delta, 0.0, false)
+		move_and_slide()
 		return
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var direction := Vector3(input.x, 0.0, input.y).rotated(Vector3.UP, camera_yaw).normalized()
 	var running := Input.is_action_pressed("run") and direction.length_squared() > 0.0
 	var speed := RUN_SPEED if running else WALK_SPEED
-	velocity.x = direction.x * speed
-	velocity.z = direction.z * speed
-	velocity.y = -1.0
+	var change := ACCELERATION if direction.length_squared() > 0.0 else DECELERATION
+	velocity.x = move_toward(velocity.x, direction.x * speed, change * delta)
+	velocity.z = move_toward(velocity.z, direction.z * speed, change * delta)
+	if is_on_floor():
+		if Input.is_action_just_pressed("jump"):
+			velocity.y = JUMP_VELOCITY
+	else:
+		velocity.y -= GRAVITY * delta
 	if direction.length_squared() > 0.0:
-		rotation.y = lerp_angle(rotation.y, atan2(direction.x, direction.z), delta * 10.0)
+		# Character art faces local -Z; this keeps the face toward travel instead of backward.
+		rotation.y = lerp_angle(rotation.y, atan2(-direction.x, -direction.z), delta * 12.0)
 	move_and_slide()
-	_animate_body(delta, direction.length(), running)
+	_animate_body(delta, Vector2(velocity.x, velocity.z).length() / RUN_SPEED, running)
 
 func _build_body() -> void:
 	var collider := CollisionShape3D.new()
