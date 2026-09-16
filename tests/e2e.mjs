@@ -24,7 +24,7 @@ try {
     viewport: { width: 1440, height: 1040 },
   });
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("pageerror", (e) => errors.push(e.stack || e.message));
   await page.goto(app.url);
   try {
     await page.getByRole("heading", { name: /A little progress/ }).waitFor();
