@@ -47,7 +47,10 @@ func _process(delta: float) -> void:
 	pitch_root.rotation.x = lerp_angle(pitch_root.rotation.x, pitch, 1.0 - exp(-delta * 12.0))
 	target.camera_yaw = yaw
 	var planar_speed := Vector2(target.velocity.x, target.velocity.z).length()
-	var desired_fov := 72.0 if planar_speed > 4.8 else 67.0
+	# A continuous response avoids the visible zoom pulse caused by repeatedly
+	# crossing the old walk/run threshold.
+	var speed_ratio := clampf(planar_speed / PlayerAvatar.RUN_SPEED, 0.0, 1.0)
+	var desired_fov := lerpf(67.0, 71.0, smoothstep(0.15, 1.0, speed_ratio))
 	camera.fov = lerpf(camera.fov, desired_fov, 1.0 - exp(-delta * 4.0))
 	if shake_left > 0.0:
 		shake_left -= delta

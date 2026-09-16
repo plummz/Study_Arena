@@ -7,6 +7,9 @@ const GRID_SIZE := 31
 const CELL_SIZE := 5.4
 const ENCOUNTER_COUNT := 100
 const WALL_HEIGHT := 5.8
+const SAVE_FILE := "user://dungeon_progress.json"
+const SAVE_VERSION := 1
+const STUDY_ARENA_HOME := "http://localhost:8080/#home"
 const COMPANION_IDS := ["moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova", "ember", "bubbles", "byte", "clover", "mochi", "comet", "pebble", "melody", "taro", "sol"]
 const DIFFICULTIES := {
 	"easy": {"label": "Easy", "seconds": 1800, "mistakes": 10, "hint": 2},
@@ -31,6 +34,11 @@ var coins := 0
 var answered := 0
 var current_encounter := -1
 var running := false
+var is_run_paused := false
+var auto_save_elapsed := 0.0
+var maze_seed := 0
+var cleared_encounters: Array[int] = []
+var smoke_mode := false
 var map_open := false
 var selected_companion := "moss"
 var hud: Control
@@ -48,8 +56,11 @@ var message_label: Label
 var effects_root: Node3D
 var camera_rig: ThirdPersonCamera
 var damage_flash: ColorRect
+var pause_panel: PanelContainer
+var pause_status_label: Label
 
 func _ready() -> void:
+	get_tree().auto_accept_quit = false
 	rng.randomize()
 	selected_companion = _load_companion_choice()
 	var launch_companion := _argument_value("--companion=")
@@ -58,11 +69,14 @@ func _ready() -> void:
 		_save_companion_choice(selected_companion)
 	_build_environment()
 	_build_ui()
-	if "--smoke" in OS.get_cmdline_user_args():
+	smoke_mode = "--smoke" in OS.get_cmdline_user_args()
+	if smoke_mode:
 		call_deferred("_smoke_test")
 	else:
 		var launch_difficulty := _argument_value("--difficulty=")
-		if launch_difficulty in DIFFICULTIES:
+		if _has_saved_run():
+			_show_resume_picker(launch_difficulty if launch_difficulty in DIFFICULTIES else "easy")
+		elif launch_difficulty in DIFFICULTIES:
 			call_deferred("_start_game", launch_difficulty)
 		else:
 			_show_companion_picker()
@@ -76,16 +90,22 @@ func _smoke_test() -> void:
 	assert(get_tree().get_nodes_in_group("puddle").size() == 14)
 	assert(get_tree().get_nodes_in_group("snake").size() == 10)
 	assert(is_instance_valid(player.left_arm) and is_instance_valid(player.right_leg))
+	assert(player.left_arm.mesh is CapsuleMesh and player.right_leg.mesh is CapsuleMesh)
+	assert(is_instance_valid(pause_panel) and pause_panel.get_node_or_null("VBoxContainer") != null)
 	var sample_actor: CartoonActor = encounters[0].get_meta("actor")
 	assert(is_instance_valid(sample_actor) and sample_actor.has_node("AnimatedBody/CartoonFace/LeftEye"))
 	assert(get_node_or_null("EntrancePortal/MagicPortal") != null)
-	print("DUNGEON_SMOKE_PASS questions=100 encounters=100 traps=24 puddles=14 snakes=10 branches=%d tall_walls=true smooth_camera=true jump=true" % _branch_count())
+	print("DUNGEON_SMOKE_PASS questions=100 encounters=100 traps=24 puddles=14 snakes=10 branches=%d tall_walls=true smooth_camera=true jump=true rounded_player=true pause_save=true retry_home=true" % _branch_count())
 	get_tree().quit()
 
 func _process(delta: float) -> void:
-	if not running:
+	if not running or is_run_paused:
 		return
 	time_left = maxf(0.0, time_left - delta)
+	auto_save_elapsed += delta
+	if auto_save_elapsed >= 8.0:
+		auto_save_elapsed = 0.0
+		_save_progress()
 	_update_hud()
 	if time_left <= 0.0:
 		_game_over("The dungeon clock reached zero.")
@@ -94,6 +114,17 @@ func _process(delta: float) -> void:
 		map_panel.visible = map_open
 	if map_open and is_instance_valid(map_view):
 		map_view.queue_redraw()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("pause") and running:
+		_toggle_pause()
+		get_viewport().set_input_as_handled()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if running:
+			_save_progress()
+		get_tree().quit()
 
 func _build_environment() -> void:
 	var world := WorldEnvironment.new()
@@ -124,6 +155,8 @@ func _build_environment() -> void:
 	add_child(effects_root)
 
 func _start_game(mode: String) -> void:
+	if not smoke_mode:
+		_clear_saved_run()
 	difficulty = mode
 	var rules: Dictionary = DIFFICULTIES[mode]
 	time_left = float(rules.seconds)
@@ -131,8 +164,13 @@ func _start_game(mode: String) -> void:
 	mercy_tokens = 0
 	coins = 0
 	answered = 0
+	cleared_encounters.clear()
+	is_run_paused = false
+	auto_save_elapsed = 0.0
 	current_encounter = -1
 	questions = _make_questions()
+	maze_seed = rng.randi()
+	rng.seed = maze_seed
 	_generate_maze()
 	_build_dungeon_meshes()
 	_spawn_traps()
@@ -144,6 +182,7 @@ func _start_game(mode: String) -> void:
 	hud.visible = true
 	message_label.text = "%s dungeon begun. Find all 100 encounters." % rules.label
 	_update_hud()
+	_save_progress()
 
 func _generate_maze() -> void:
 	grid.resize(GRID_SIZE * GRID_SIZE)
@@ -269,9 +308,9 @@ func _spawn_traps() -> void:
 		trap.add_child(spikes)
 		var warning := _mesh_part(trap, "WarningPlate", Vector3(2.2, 0.06, 2.2), Vector3(0, 0.03, 0), Color("6d2735"), true)
 		warning.transparency = 0.28
-		var pulse := create_tween().set_loops()
-		pulse.tween_property(spikes, "position:y", 0.58, 0.45).set_trans(Tween.TRANS_SINE)
-		pulse.tween_property(spikes, "position:y", 0.08, 0.55).set_trans(Tween.TRANS_SINE)
+		# Keep the warning readable without synchronizing 24 one-second pulses,
+		# which was perceived as a full-screen heartbeat on some GPUs.
+		spikes.position.y += 0.08 * float(i % 3)
 		trap.body_entered.connect(_on_trap_entered.bind(trap))
 		trap.add_to_group("dungeon_generated")
 		trap.add_to_group("trap")
@@ -310,8 +349,9 @@ func _spawn_puddles_and_snakes() -> void:
 		water.mesh = disc
 		puddle.add_child(water)
 		var ripple := create_tween().set_loops()
-		ripple.tween_property(water, "scale", Vector3(1.08, 1.0, 0.94), 1.2).set_trans(Tween.TRANS_SINE)
-		ripple.tween_property(water, "scale", Vector3(0.94, 1.0, 1.08), 1.2).set_trans(Tween.TRANS_SINE)
+		var ripple_time := 1.65 + float(i % 5) * 0.19
+		ripple.tween_property(water, "scale", Vector3(1.035, 1.0, 0.97), ripple_time).set_trans(Tween.TRANS_SINE)
+		ripple.tween_property(water, "scale", Vector3(0.97, 1.0, 1.035), ripple_time + 0.21).set_trans(Tween.TRANS_SINE)
 	for i in 10:
 		var snake := Area3D.new()
 		snake.name = "CartoonSnake_%02d" % i
@@ -407,9 +447,8 @@ func _build_set_dressing() -> void:
 		light.shadow_enabled = false
 		light.position.y = 1.55
 		torch.add_child(light)
-		var pulse := create_tween().set_loops()
-		pulse.tween_property(flame, "scale", Vector3(0.82, 1.18, 0.82), 0.32 + i * 0.009)
-		pulse.tween_property(flame, "scale", Vector3.ONE, 0.25 + i * 0.007)
+		# Flames stay visually alive, but no longer resize in a synchronized loop.
+		flame.scale = Vector3(0.92 + float(i % 3) * 0.035, 1.04 + float(i % 4) * 0.025, 0.92)
 	_build_gateway(_world(entrance_cell) + Vector3(0, 0, CELL_SIZE * 0.72), Color("68dbff"), "EntrancePortal", "ENTRANCE")
 	_build_gateway(_world(exit_cell), Color("d997ff"), "VictoryPortal", "EXIT")
 	for i in 10:
@@ -478,6 +517,8 @@ func _dungeon_material(color: Color, glow := false) -> StandardMaterial3D:
 func _spawn_player() -> void:
 	if is_instance_valid(player):
 		player.queue_free()
+	if is_instance_valid(camera_rig):
+		camera_rig.queue_free()
 	player = PlayerAvatar.new()
 	player.name = "Player"
 	player.companion_id = selected_companion
@@ -575,6 +616,8 @@ func _answer_question(value: int) -> void:
 	if correct:
 		coins += 1
 		answered += 1
+		if current_encounter not in cleared_encounters:
+			cleared_encounters.append(current_encounter)
 		player.celebrate()
 		_play_slay_effect(encounter)
 		if rng.randf() < 0.05:
@@ -595,6 +638,8 @@ func _answer_question(value: int) -> void:
 	_update_hud()
 	if answered >= ENCOUNTER_COUNT:
 		_complete_maze()
+	else:
+		_save_progress()
 
 func _use_hint() -> void:
 	var cost := int(DIFFICULTIES[difficulty].hint)
@@ -699,6 +744,7 @@ func _effect_ring(at: Vector3, color: Color, radius: float) -> MeshInstance3D:
 
 func _complete_maze() -> void:
 	running = false
+	_clear_saved_run()
 	player.controls_enabled = false
 	result_panel.visible = true
 	player.celebrate()
@@ -713,6 +759,7 @@ func _game_over(reason: String) -> void:
 	if not running:
 		return
 	running = false
+	_clear_saved_run()
 	player.controls_enabled = false
 	question_panel.visible = false
 	result_panel.visible = true
@@ -724,6 +771,177 @@ func _update_hud() -> void:
 	progress_label.text = "Questions %d / 100" % answered
 	coin_label.text = "Coins %d" % coins
 	life_label.text = "Wrong answers left %d" % mistakes_left
+
+func _toggle_pause() -> void:
+	is_run_paused = not is_run_paused
+	pause_panel.visible = is_run_paused
+	player.controls_enabled = not is_run_paused and current_encounter < 0
+	if is_run_paused:
+		_save_progress()
+		pause_status_label.text = "Progress saved · %d / 100 encounters · %02d:%02d remaining" % [answered, ceili(time_left) / 60, ceili(time_left) % 60]
+	else:
+		message_label.text = "Adventure resumed. Your progress is safe."
+
+func _save_and_return_home() -> void:
+	_save_progress()
+	OS.shell_open(STUDY_ARENA_HOME)
+	get_tree().quit()
+
+func _return_home() -> void:
+	OS.shell_open(STUDY_ARENA_HOME)
+	get_tree().quit()
+
+func _retry_game() -> void:
+	_clear_saved_run()
+	result_panel.visible = false
+	question_panel.visible = false
+	map_panel.visible = false
+	map_open = false
+	for child in get_tree().get_nodes_in_group("dungeon_generated"):
+		child.queue_free()
+	if is_instance_valid(player): player.queue_free()
+	if is_instance_valid(camera_rig): camera_rig.queue_free()
+	for child in effects_root.get_children(): child.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_start_game(difficulty)
+
+func _save_progress() -> void:
+	if smoke_mode or not running or not is_instance_valid(player):
+		return
+	var data := {
+		"version": SAVE_VERSION,
+		"difficulty": difficulty,
+		"companion": selected_companion,
+		"maze_seed": maze_seed,
+		"time_left": time_left,
+		"mistakes_left": mistakes_left,
+		"mercy_tokens": mercy_tokens,
+		"coins": coins,
+		"answered": answered,
+		"current_encounter": current_encounter,
+		"cleared_encounters": cleared_encounters,
+		"player_position": [player.global_position.x, player.global_position.y, player.global_position.z],
+		"player_rotation_y": player.rotation.y,
+		"camera_yaw": camera_rig.yaw if is_instance_valid(camera_rig) else 0.0,
+		"saved_at": Time.get_datetime_string_from_system(false, true),
+	}
+	var file := FileAccess.open(SAVE_FILE, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(data))
+
+func _load_saved_data() -> Dictionary:
+	if not FileAccess.file_exists(SAVE_FILE):
+		return {}
+	var file := FileAccess.open(SAVE_FILE, FileAccess.READ)
+	if not file:
+		return {}
+	var parsed = JSON.parse_string(file.get_as_text())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return {}
+	var data: Dictionary = parsed
+	if int(data.get("version", 0)) != SAVE_VERSION:
+		return {}
+	if String(data.get("difficulty", "")) not in DIFFICULTIES or String(data.get("companion", "")) not in COMPANION_IDS:
+		return {}
+	return data
+
+func _has_saved_run() -> bool:
+	return not _load_saved_data().is_empty()
+
+func _clear_saved_run() -> void:
+	if FileAccess.file_exists(SAVE_FILE):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_FILE))
+
+func _resume_saved_run() -> void:
+	var data := _load_saved_data()
+	if data.is_empty():
+		_show_companion_picker()
+		return
+	difficulty = String(data.difficulty)
+	selected_companion = String(data.companion)
+	maze_seed = int(data.maze_seed)
+	time_left = maxf(1.0, float(data.time_left))
+	mistakes_left = int(data.mistakes_left)
+	mercy_tokens = int(data.get("mercy_tokens", 0))
+	coins = int(data.coins)
+	cleared_encounters.clear()
+	for id in data.get("cleared_encounters", []):
+		cleared_encounters.append(int(id))
+	answered = cleared_encounters.size()
+	current_encounter = int(data.get("current_encounter", -1))
+	questions = _make_questions()
+	rng.seed = maze_seed
+	_generate_maze()
+	_build_dungeon_meshes()
+	_spawn_traps()
+	_spawn_puddles_and_snakes()
+	_spawn_player()
+	_spawn_encounters()
+	_build_set_dressing()
+	var saved_position: Array = data.get("player_position", [])
+	if saved_position.size() == 3:
+		player.global_position = Vector3(float(saved_position[0]), float(saved_position[1]), float(saved_position[2]))
+	player.rotation.y = float(data.get("player_rotation_y", 0.0))
+	camera_rig.yaw = float(data.get("camera_yaw", 0.0))
+	for id in cleared_encounters:
+		if id >= 0 and id < encounters.size() and is_instance_valid(encounters[id]):
+			encounters[id].monitoring = false
+			encounters[id].visible = false
+	running = true
+	is_run_paused = false
+	auto_save_elapsed = 0.0
+	hud.visible = true
+	result_panel.visible = false
+	message_label.text = "Saved adventure restored · %d of 100 encounters complete." % answered
+	_update_hud()
+	if current_encounter >= 0 and current_encounter < encounters.size() and current_encounter not in cleared_encounters:
+		player.controls_enabled = false
+		_show_question(current_encounter, String(encounters[current_encounter].get_meta("kind")))
+	else:
+		current_encounter = -1
+		player.controls_enabled = true
+
+func _show_resume_picker(new_difficulty: String) -> void:
+	var data := _load_saved_data()
+	if data.is_empty():
+		_start_game(new_difficulty)
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "ResumeLayer"
+	add_child(layer)
+	var panel := _panel(Vector2(390, 150), Vector2(500, 420))
+	layer.add_child(panel)
+	var stack := VBoxContainer.new()
+	stack.position = Vector2(38, 30)
+	stack.size = Vector2(424, 360)
+	stack.add_theme_constant_override("separation", 15)
+	panel.add_child(stack)
+	var heading := Label.new()
+	heading.text = "CONTINUE YOUR ADVENTURE?"
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	heading.add_theme_font_size_override("font_size", 27)
+	stack.add_child(heading)
+	var summary := Label.new()
+	summary.text = "%s · %d / 100 encounters\n%d coins · %02d:%02d remaining" % [String(data.difficulty).capitalize(), int(data.get("answered", 0)), int(data.coins), ceili(float(data.time_left)) / 60, ceili(float(data.time_left)) % 60]
+	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	summary.add_theme_font_size_override("font_size", 20)
+	stack.add_child(summary)
+	var resume_button := Button.new()
+	resume_button.text = "Resume Saved Adventure"
+	resume_button.custom_minimum_size.y = 62
+	resume_button.pressed.connect(func(): layer.queue_free(); _resume_saved_run())
+	stack.add_child(resume_button)
+	var new_button := Button.new()
+	new_button.text = "Start New %s Adventure" % new_difficulty.capitalize()
+	new_button.custom_minimum_size.y = 56
+	new_button.pressed.connect(func(): layer.queue_free(); _clear_saved_run(); _start_game(new_difficulty))
+	stack.add_child(new_button)
+	var home_button := Button.new()
+	home_button.text = "Return to Study Arena"
+	home_button.custom_minimum_size.y = 48
+	home_button.pressed.connect(_return_home)
+	stack.add_child(home_button)
 
 func _branch_count() -> int:
 	var result := 0
@@ -794,7 +1012,7 @@ func _build_ui() -> void:
 	map_view.size = Vector2(292, 292)
 	map_panel.add_child(map_view)
 	map_panel.visible = false
-	result_panel = _panel(Vector2(390, 210), Vector2(500, 260))
+	result_panel = _panel(Vector2(390, 165), Vector2(500, 390))
 	hud.add_child(result_panel)
 	var result_margin := MarginContainer.new()
 	result_margin.name = "Margin"
@@ -806,7 +1024,57 @@ func _build_ui() -> void:
 	result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result.add_theme_font_size_override("font_size", 26)
 	result_margin.add_child(result)
+	var result_actions := VBoxContainer.new()
+	result_actions.position = Vector2(44, 225)
+	result_actions.size = Vector2(412, 135)
+	result_actions.add_theme_constant_override("separation", 10)
+	result_panel.add_child(result_actions)
+	var retry_button := Button.new()
+	retry_button.text = "Try Again"
+	retry_button.custom_minimum_size.y = 56
+	retry_button.add_theme_font_size_override("font_size", 20)
+	retry_button.pressed.connect(_retry_game)
+	result_actions.add_child(retry_button)
+	var result_home_button := Button.new()
+	result_home_button.text = "Return to Study Arena"
+	result_home_button.custom_minimum_size.y = 52
+	result_home_button.add_theme_font_size_override("font_size", 19)
+	result_home_button.pressed.connect(_return_home)
+	result_actions.add_child(result_home_button)
 	result_panel.visible = false
+	pause_panel = _panel(Vector2(390, 145), Vector2(500, 430))
+	hud.add_child(pause_panel)
+	var pause_stack := VBoxContainer.new()
+	pause_stack.position = Vector2(42, 32)
+	pause_stack.size = Vector2(416, 360)
+	pause_stack.add_theme_constant_override("separation", 14)
+	pause_panel.add_child(pause_stack)
+	var pause_heading := Label.new()
+	pause_heading.text = "ADVENTURE PAUSED"
+	pause_heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pause_heading.add_theme_font_size_override("font_size", 29)
+	pause_stack.add_child(pause_heading)
+	pause_status_label = Label.new()
+	pause_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pause_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pause_status_label.add_theme_font_size_override("font_size", 18)
+	pause_stack.add_child(pause_status_label)
+	var resume_button := Button.new()
+	resume_button.text = "Resume"
+	resume_button.custom_minimum_size.y = 62
+	resume_button.pressed.connect(_toggle_pause)
+	pause_stack.add_child(resume_button)
+	var save_home_button := Button.new()
+	save_home_button.text = "Save & Return to Study Arena"
+	save_home_button.custom_minimum_size.y = 58
+	save_home_button.pressed.connect(_save_and_return_home)
+	pause_stack.add_child(save_home_button)
+	var pause_note := Label.new()
+	pause_note.text = "Your exact maze, position, timer, coins, and completed encounters are stored on this computer. Press Esc to resume."
+	pause_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pause_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pause_stack.add_child(pause_note)
+	pause_panel.visible = false
 	hud.visible = false
 
 func _show_difficulty_picker() -> void:

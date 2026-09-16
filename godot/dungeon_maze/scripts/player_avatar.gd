@@ -21,6 +21,8 @@ var left_leg: MeshInstance3D
 var right_leg: MeshInstance3D
 var action_locked := false
 var accessory: Node3D
+var left_hand: MeshInstance3D
+var right_hand: MeshInstance3D
 
 func _ready() -> void:
 	collision_layer = 2
@@ -84,16 +86,24 @@ func _build_body() -> void:
 	skin.roughness = 0.78
 	var boot := StandardMaterial3D.new()
 	boot.albedo_color = Color("342336")
-	head = _sphere_part("Head", Vector3(0.66, 0.62, 0.6), Vector3(0, 1.75, 0), skin)
+	head = _sphere_part("Head", Vector3(0.7, 0.66, 0.63), Vector3(0, 1.78, 0), skin)
 	var round_body := companion_id in ["moss", "sky", "sunny", "bubbles", "mochi", "pebble", "melody", "sol"]
 	if round_body:
-		_sphere_part("Body", Vector3(0.86, 0.88, 0.66), Vector3(0, 1.03, 0.08), cloth)
+		_sphere_part("Body", Vector3(0.82, 0.86, 0.62), Vector3(0, 1.04, 0.08), cloth)
 	else:
-		_part("Body", Vector3(0.78, 0.86, 0.46), Vector3(0, 1.08, 0), cloth)
-	left_arm = _part("LeftArm", Vector3(0.2, 0.72, 0.2), Vector3(-0.48, 1.18, 0), skin)
-	right_arm = _part("RightArm", Vector3(0.2, 0.72, 0.2), Vector3(0.48, 1.18, 0), skin)
-	left_leg = _part("LeftLeg", Vector3(0.25, 0.78, 0.28), Vector3(-0.2, 0.4, 0), boot)
-	right_leg = _part("RightLeg", Vector3(0.25, 0.78, 0.28), Vector3(0.2, 0.4, 0), boot)
+		_capsule_part("Body", 0.38, 0.9, Vector3(0, 1.06, 0), cloth)
+	left_arm = _capsule_part("LeftArm", 0.115, 0.7, Vector3(-0.48, 1.18, 0), skin)
+	right_arm = _capsule_part("RightArm", 0.115, 0.7, Vector3(0.48, 1.18, 0), skin)
+	left_leg = _capsule_part("LeftLeg", 0.145, 0.74, Vector3(-0.2, 0.42, 0), boot)
+	right_leg = _capsule_part("RightLeg", 0.145, 0.74, Vector3(0.2, 0.42, 0), boot)
+	left_hand = _sphere_part("LeftHand", Vector3(0.14, 0.14, 0.13), Vector3(-0.48, 0.81, -0.01), skin)
+	right_hand = _sphere_part("RightHand", Vector3(0.14, 0.14, 0.13), Vector3(0.48, 0.81, -0.01), skin)
+	_attach_part(left_hand, left_arm, Vector3(0, -0.39, 0))
+	_attach_part(right_hand, right_arm, Vector3(0, -0.39, 0))
+	var left_foot := _sphere_part("LeftFoot", Vector3(0.18, 0.12, 0.25), Vector3(-0.2, 0.1, -0.08), boot)
+	var right_foot := _sphere_part("RightFoot", Vector3(0.18, 0.12, 0.25), Vector3(0.2, 0.1, -0.08), boot)
+	_attach_part(left_foot, left_leg, Vector3(0, -0.37, -0.08))
+	_attach_part(right_foot, right_leg, Vector3(0, -0.37, -0.08))
 	_build_face(skin, cloth, boot)
 	_add_companion_identity(cloth, skin)
 
@@ -203,13 +213,21 @@ func _build_face(skin: Material, primary: Material, ink_material: Material) -> v
 	_sphere_part("RightEye", Vector3(0.16, 0.2, 0.07), Vector3(0.2, 1.82, -0.55), white)
 	_sphere_part("LeftPupil", Vector3(0.075, 0.11, 0.035), Vector3(-0.2, 1.81, -0.62), ink)
 	_sphere_part("RightPupil", Vector3(0.075, 0.11, 0.035), Vector3(0.2, 1.81, -0.62), ink)
+	_sphere_part("LeftEyeHighlight", Vector3(0.026, 0.034, 0.014), Vector3(-0.225, 1.86, -0.657), white)
+	_sphere_part("RightEyeHighlight", Vector3(0.026, 0.034, 0.014), Vector3(0.175, 1.86, -0.657), white)
+	var left_brow := _part("LeftBrow", Vector3(0.25, 0.035, 0.035), Vector3(-0.2, 2.02, -0.57), ink)
+	var right_brow := _part("RightBrow", Vector3(0.25, 0.035, 0.035), Vector3(0.2, 2.02, -0.57), ink)
+	left_brow.rotation.z = -0.08
+	right_brow.rotation.z = 0.08
 	_sphere_part("LeftBlush", Vector3(0.1, 0.055, 0.025), Vector3(-0.36, 1.62, -0.57), blush)
 	_sphere_part("RightBlush", Vector3(0.1, 0.055, 0.025), Vector3(0.36, 1.62, -0.57), blush)
 	if companion_id in ["moss", "sky", "melody"]:
 		var beak := _part("Beak", Vector3(0.18, 0.14, 0.16), Vector3(0, 1.61, -0.61), _plain_material(Color("efa82f")))
 		beak.rotation.x = 0.25
 	else:
-		_part("Smile", Vector3(0.22, 0.055, 0.04), Vector3(0, 1.59, -0.61), ink)
+		_sphere_part("Nose", Vector3(0.045, 0.04, 0.035), Vector3(0, 1.69, -0.64), skin)
+		var mouth := _sphere_part("Smile", Vector3(0.13, 0.045, 0.025), Vector3(0, 1.57, -0.64), ink)
+		mouth.scale.y = 0.55
 
 func _add_pointed_ears(material: Material) -> void:
 	for side in [-1.0, 1.0]:
@@ -313,6 +331,25 @@ func _sphere_part(label: String, size: Vector3, at: Vector3, material: Material)
 	body_root.add_child(item)
 	return item
 
+func _capsule_part(label: String, radius: float, height: float, at: Vector3, material: Material) -> MeshInstance3D:
+	var item := MeshInstance3D.new()
+	item.name = label
+	var mesh := CapsuleMesh.new()
+	mesh.radius = radius
+	mesh.height = height
+	mesh.radial_segments = 16
+	mesh.rings = 6
+	mesh.material = material
+	item.mesh = mesh
+	item.position = at
+	body_root.add_child(item)
+	return item
+
+func _attach_part(item: Node3D, parent: Node3D, local_position: Vector3) -> void:
+	body_root.remove_child(item)
+	parent.add_child(item)
+	item.position = local_position
+
 func _animate_body(delta: float, amount: float, running: bool) -> void:
 	if amount > 0.05:
 		move_phase += delta * (13.0 if running else 8.0)
@@ -321,7 +358,7 @@ func _animate_body(delta: float, amount: float, running: bool) -> void:
 		right_arm.rotation.x = -swing
 		left_leg.rotation.x = -swing * 0.78
 		right_leg.rotation.x = swing * 0.78
-		head.rotation.y = sin(move_phase * 0.5) * 0.08
+		head.rotation.y = 0.0
 		if is_instance_valid(accessory): accessory.rotation.z = sin(move_phase * 1.4) * 0.28
 		body_root.position.y = abs(sin(move_phase * 2.0)) * (0.09 if running else 0.045)
 		body_root.rotation.z = sin(move_phase) * (0.045 if running else 0.02)
@@ -332,7 +369,7 @@ func _animate_body(delta: float, amount: float, running: bool) -> void:
 		right_arm.rotation.x = lerp(right_arm.rotation.x, 0.0, delta * 7.0)
 		left_leg.rotation.x = lerp(left_leg.rotation.x, 0.0, delta * 7.0)
 		right_leg.rotation.x = lerp(right_leg.rotation.x, 0.0, delta * 7.0)
-		head.rotation.y = sin(move_phase) * 0.035
+		head.rotation.y = 0.0
 		body_root.position.y = sin(move_phase) * 0.018
 		body_root.rotation.z = 0.0
 		body_root.rotation.x = lerp(body_root.rotation.x, 0.0, delta * 7.0)

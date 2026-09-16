@@ -36,6 +36,7 @@ const icons = {
   duel: "m4 3 17 17 M20 3 3 20 M3 15l6 6 M15 3l6 6",
   admin: "M12 2 3 6v6q0 7 9 10 9-3 9-10V6Z M8 12l3 3 5-6",
 };
+const assetUrl = (path) => new URL(path, import.meta.url).href;
 const icon = (name) =>
   `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${icons[name] || icons.library}"/></svg>`;
 let vault = null,
@@ -135,7 +136,7 @@ function companionLevel(id = companionState().selected) {
   return { points, level: Math.min(20, Math.floor(points / 25) + 1), next: 25 - (points % 25) };
 }
 function companionSprite(companion, cls = "") {
-  return `<img class="companion-sprite ${cls}" src="/assets/companions/${companion.id}.png" alt="" aria-hidden="true">`;
+  return `<img class="companion-sprite ${cls}" src="${assetUrl(`./assets/companions/${companion.id}.png`)}" alt="" aria-hidden="true">`;
 }
 function companionReact(mood = "wave", message = "", movement = "") {
   const dock = $("#companion-dock"),
@@ -332,7 +333,7 @@ async function load(path, opts) {
     return await client.request(path, { ...(user ? {} : {timeout: 1000}), ...opts });
   } catch (error) {
     if (user) throw error;
-    const seed = await fetch("/starter.json").then((r) => r.json());
+    const seed = await fetch(assetUrl("./starter.json")).then((r) => r.json());
     if (seed[path]) return { ...seed[path], offline: true };
     throw error;
   }
@@ -379,7 +380,7 @@ function shell(content) {
       day: "numeric",
     });
   $("#app").innerHTML =
-    `<div class="shell"><aside class="sidebar"><a class="brand" href="#home"><img src="/icon.svg" alt=""><span>study arena<small>Your own pace</small></span></a><nav class="nav" aria-label="Main">${nav}</nav><div class="side-bottom"><div class="user-chip">${profileAvatar()}<div><strong>${h(user?.display_name || "Guest explorer")}</strong><p>${user ? `${band(user.band)} · private skill band` : "A little curiosity goes a long way."}</p></div></div></div></aside><div class="content"><header class="topbar"><span class="today">${h(current)}</span><div class="actions"><span class="pill">${navigator.onLine ? "● Connected" : "○ Offline study"}${pending ? ` · ${pending} waiting to sync` : ""}</span>${health.demo ? '<span class="pill">Demo · synthetic data</span>' : ""}${!user ? button("Sign in", () => authPage(), "small") : button("Lock", lock, "small subtle")}</div></header><main id="main" tabindex="-1"><div id="page-error"></div>${content}</main></div><nav class="bottom-nav" aria-label="Mobile main">${[
+    `<div class="shell"><aside class="sidebar"><a class="brand" href="#home"><img src="${assetUrl("./icon.svg")}" alt=""><span>study arena<small>Your own pace</small></span></a><nav class="nav" aria-label="Main">${nav}</nav><div class="side-bottom"><div class="user-chip">${profileAvatar()}<div><strong>${h(user?.display_name || "Guest explorer")}</strong><p>${user ? `${band(user.band)} · private skill band` : "A little curiosity goes a long way."}</p></div></div></div></aside><div class="content"><header class="topbar"><span class="today">${h(current)}</span><div class="actions"><span class="pill">${navigator.onLine ? "● Connected" : "○ Offline study"}${pending ? ` · ${pending} waiting to sync` : ""}</span>${health.demo ? '<span class="pill">Demo · synthetic data</span>' : ""}${!user ? button("Sign in", () => authPage(), "small") : button("Lock", lock, "small subtle")}</div></header><main id="main" tabindex="-1"><div id="page-error"></div>${content}</main></div><nav class="bottom-nav" aria-label="Mobile main">${[
       ["home", "Home"],
       ["focus", "Focus"],
       ["library", "Library"],
@@ -540,7 +541,7 @@ async function authPage(mode = "login") {
             },
           );
   $("#app").innerHTML =
-    `<div class="auth"><a class="brand" href="#home"><img src="/icon.svg" alt=""><span>study arena<small>Your own pace</small></span></a><div class="card"><div class="eyebrow">A calm place to grow</div><h1>${mode === "register" ? "Make room for learning." : mode === "reset" ? "Let’s get you back in." : "Welcome to your study space."}</h1><p>One topic, one small step, one good study day.</p><div id="auth-error"></div>${body}<div class="divider"></div><div class="actions">${button(mode === "register" ? "Already registered? Sign in" : "Create an account", () => authPage(mode === "register" ? "login" : "register"), "subtle small")}${button("Forgot password", () => authPage("reset"), "subtle small")}${button("Explore as a guest", () => go("home"), "subtle small")}</div>${health.demo ? `<div class="banner spaced">Synthetic demo accounts: student@study.test, teacher@study.test, admin@study.test. Password: StudyArena!2026. ${button("Open demo email inbox", demoMail, "small")}</div>` : ""}</div></div>`;
+    `<div class="auth"><a class="brand" href="#home"><img src="${assetUrl("./icon.svg")}" alt=""><span>study arena<small>Your own pace</small></span></a><div class="card"><div class="eyebrow">A calm place to grow</div><h1>${mode === "register" ? "Make room for learning." : mode === "reset" ? "Let’s get you back in." : "Welcome to your study space."}</h1><p>One topic, one small step, one good study day.</p><div id="auth-error"></div>${body}<div class="divider"></div><div class="actions">${button(mode === "register" ? "Already registered? Sign in" : "Create an account", () => authPage(mode === "register" ? "login" : "register"), "subtle small")}${button("Forgot password", () => authPage("reset"), "subtle small")}${button("Explore as a guest", () => go("home"), "subtle small")}</div>${health.demo ? `<div class="banner spaced">Synthetic demo accounts: student@study.test, teacher@study.test, admin@study.test. Password: StudyArena!2026. ${button("Open demo email inbox", demoMail, "small")}</div>` : ""}</div></div>`;
 }
 async function demoMail() {
   const email = prompt(
@@ -2587,7 +2588,7 @@ async function boot() {
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (!refreshing) { refreshing = true; location.reload(); }
     });
-    navigator.serviceWorker.register("/sw.js").then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register(assetUrl("./sw.js")).then((registration) => registration.update()).catch(() => {});
   }
   try {
     [health, config] = await Promise.all([

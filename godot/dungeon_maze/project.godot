@@ -24,6 +24,7 @@ run={"deadzone":0.3,"events":[Object(InputEventKey,"physical_keycode":4194325)]}
 interact={"deadzone":0.3,"events":[Object(InputEventKey,"physical_keycode":69)]}
 jump={"deadzone":0.3,"events":[Object(InputEventKey,"physical_keycode":32)]}
 map={"deadzone":0.3,"events":[Object(InputEventKey,"physical_keycode":77)]}
+pause={"deadzone":0.3,"events":[Object(InputEventKey,"physical_keycode":4194305)]}
 camera_left={"deadzone":0.3,"events":[Object(InputEventKey,"physical_keycode":4194319)]}
 camera_right={"deadzone":0.3,"events":[Object(InputEventKey,"physical_keycode":4194321)]}
 camera_up={"deadzone":0.3,"events":[Object(InputEventKey,"physical_keycode":4194320)]}
