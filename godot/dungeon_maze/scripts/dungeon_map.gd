@@ -41,5 +41,5 @@ func _draw_marker(grid_cell: Vector2i, cell_size: float, color: Color, text: Str
 
 func _draw_world_dot(node: Node3D, cell_size: float, color: Color, radius_scale: float) -> void:
 	if not is_instance_valid(node): return
-	var grid_pos := Vector2(node.position.x, node.position.z) / game.CELL_SIZE + Vector2.ONE * (game.GRID_SIZE / 2.0)
+	var grid_pos: Vector2 = Vector2(node.position.x, node.position.z) / float(game.CELL_SIZE) + Vector2.ONE * (float(game.GRID_SIZE) / 2.0)
 	draw_circle(grid_pos * cell_size + Vector2.ONE * cell_size * 0.5, maxf(1.3, cell_size * radius_scale), color)
