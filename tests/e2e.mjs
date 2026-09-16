@@ -26,7 +26,12 @@ try {
   const page = await context.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(app.url);
-  await page.getByRole("heading", { name: /A little progress/ }).waitFor();
+  try {
+    await page.getByRole("heading", { name: /A little progress/ }).waitFor();
+  } catch (error) {
+    console.error("Browser startup errors:", errors);
+    throw error;
+  }
   assert.equal(
     await page.getByRole("button", { name: "Quiz duels", exact: true }).count(),
     0,
