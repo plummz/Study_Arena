@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: study-arena-api
+    runtime: docker
+    repo: https://github.com/plummz/Study_Arena
+    branch: main
+    region: singapore
+    plan: 0.5c-512mb
+    numInstances: 1
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 60
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: APP_ORIGIN
+        value: https://plummz.github.io
+      - key: DATA_DIR
+        value: /data
+      - key: DATA_KEY
+        sync: false
+      - key: PRIZE_POLICY_APPROVED
+        value: "false"
+    disk:
+      name: study-arena-data
+      mountPath: /data
+      sizeGB: 1
