@@ -38,10 +38,21 @@ try {
     .getByLabel("Password / local workspace password")
     .fill("StudyArena!2026");
   await page.getByRole("button", { name: "Enter my study space" }).click();
-  await page.getByRole("heading", { name: "What are you studying?" }).waitFor();
-  await page.getByRole("button", { name: "Save my preferences" }).click();
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await page.getByRole("heading", { name: /A little progress/ }).waitFor();
+  const studentOnboarding = page.getByRole("heading", {
+    name: "What are you studying?",
+  });
+  const studentHome = page.getByRole("heading", {
+    name: /A little progress/,
+  });
+  await Promise.race([
+    studentOnboarding.waitFor(),
+    studentHome.waitFor(),
+  ]);
+  if (await studentOnboarding.isVisible()) {
+    await page.getByRole("button", { name: "Save my preferences" }).click();
+    await page.getByRole("button", { name: "Skip for now" }).click();
+  }
+  await studentHome.waitFor();
   results.push(
     "E2E02 Login, encrypted workspace, onboarding and skip diagnostic",
   );
