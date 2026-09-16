@@ -54,19 +54,24 @@ try {
   const studentHome = page.getByRole("heading", {
     name: /A little progress/,
   });
+  const studentStudio = page.getByRole("button", {
+    name: "AI Study Studio",
+    exact: true,
+  });
   await Promise.race([
     studentOnboarding.waitFor(),
-    studentHome.waitFor(),
+    studentStudio.waitFor(),
   ]);
   if (await studentOnboarding.isVisible()) {
     await page.getByRole("button", { name: "Save my preferences" }).click();
     await page.getByRole("button", { name: "Skip for now" }).click();
   }
   await studentHome.waitFor();
+  await studentStudio.waitFor();
   results.push(
     "E2E02 Login, encrypted workspace, onboarding and skip diagnostic",
   );
-  await page.getByRole("button", { name: "AI Study Studio", exact: true }).click();
+  await studentStudio.click();
   await page.getByLabel("Source title").fill("Motion and force notes");
   await page.getByLabel(/File · any type/).setInputFiles({
     name: "motion.txt",
@@ -139,6 +144,9 @@ try {
     .getByLabel("Password / local workspace password")
     .fill("StudyArena!2026");
   await page.getByRole("button", { name: "Enter my study space" }).click();
+  await page
+    .getByRole("button", { name: "AI Study Studio", exact: true })
+    .waitFor();
   await page.getByRole("heading", { name: /A little progress/ }).waitFor();
   results.push(
     "E2E05 Service-worker offline reload and encrypted workspace unlock",
@@ -208,11 +216,15 @@ try {
   await teacherPage.getByLabel("Email",{exact:true}).fill("teacher@study.test");
   await teacherPage.getByLabel("Password / local workspace password").fill("StudyArena!2026");
   await teacherPage.getByRole("button",{name:"Enter my study space"}).click();
-  await teacherPage.getByRole("heading",{name:/What are you studying\?|A little progress/}).waitFor();
+  await Promise.race([
+    teacherPage.getByRole("heading",{name:"What are you studying?"}).waitFor(),
+    teacherPage.getByRole("button",{name:"AI Study Studio",exact:true}).waitFor(),
+  ]);
   if(await teacherPage.getByRole("heading",{name:"What are you studying?"}).isVisible()){
     await teacherPage.getByRole("button",{name:"Save my preferences"}).click();
     await teacherPage.getByRole("button",{name:"Skip for now"}).click();
   }
+  await teacherPage.getByRole("button",{name:"AI Study Studio",exact:true}).waitFor();
   await teacherPage.getByRole("button",{name:"Study library",exact:true}).click();
   await teacherPage.getByRole("button",{name:"Create a quiz",exact:true}).click();
   await teacherPage.getByLabel("Quiz title",{exact:true}).fill("Browser authored explained quiz");
