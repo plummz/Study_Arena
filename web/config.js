@@ -1,6 +1,10 @@
 // A hosted build may set this in runtime-config.js. Same-origin remains the
 // safe default for the desktop server and local development.
-const runtimeOrigin = String(globalThis.STUDY_ARENA_API_URL || "").trim();
+const runtimeOrigin = String(
+  globalThis.document
+    ?.querySelector('meta[name="study-arena-api"]')
+    ?.getAttribute("content") || "",
+).trim();
 const browserLocation = globalThis.location;
 export const IS_GITHUB_PAGES =
   Boolean(browserLocation) && browserLocation.hostname.endsWith("github.io");

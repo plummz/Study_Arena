@@ -29,7 +29,7 @@ jobs:
         run: |
           mkdir -p _site
           cp -R web/. _site/
-          node -e 'const fs=require("fs"); const value=process.env.STUDY_ARENA_API_URL || ""; fs.writeFileSync("_site/runtime-config.js", `// Public configuration only. Never place API keys or secrets in this file.\nglobalThis.STUDY_ARENA_API_URL = ${JSON.stringify(value)};\n`);'
+          node -e 'const fs=require("fs"); const value=(process.env.STUDY_ARENA_API_URL || "").replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"); const file="_site/index.html"; fs.writeFileSync(file, fs.readFileSync(file,"utf8").replace("name=\"study-arena-api\" content=\"\"", `name=\"study-arena-api\" content=\"${value}\"`));'
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v4
         with:

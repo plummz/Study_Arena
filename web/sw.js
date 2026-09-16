@@ -1,8 +1,8 @@
-const VERSION = "study-arena-shell-v9-api-guard";
+const VERSION = "study-arena-shell-v10-api-guard";
 const SHELL = [
   "./", "./index.html", "./style.css", "./tokens.css", "./app.js",
   "./studio.js", "./import.js", "./vault.js", "./api.js", "./config.js",
-  "./native.js", "./runtime-config.js", "./icon.svg", "./manifest.webmanifest", "./starter.json",
+  "./native.js", "./icon.svg", "./manifest.webmanifest", "./starter.json",
   ...["moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova", "ember", "bubbles", "byte", "clover", "mochi", "comet", "pebble", "melody", "taro", "sol"]
     .map((id) => `./assets/companions/${id}.png`),
 ].map((path) => new URL(path, self.location.href).href);
