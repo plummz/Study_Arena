@@ -25,7 +25,7 @@ jobs:
       - uses: actions/configure-pages@v5
       - name: Prepare static site
         env:
-          STUDY_ARENA_API_URL: ${{ vars.STUDY_ARENA_API_URL }}
+          STUDY_ARENA_API_URL: ${{ vars.STUDY_ARENA_API_URL || 'https://study-arena-api-production.up.railway.app' }}
         run: |
           mkdir -p _site
           cp -R web/. _site/
