@@ -38,6 +38,8 @@ var is_run_paused := false
 var auto_save_elapsed := 0.0
 var maze_seed := 0
 var cleared_encounters: Array[int] = []
+var triggered_traps: Array[int] = []
+var triggered_snakes: Array[int] = []
 var smoke_mode := false
 var map_open := false
 var selected_companion := "moss"
@@ -165,6 +167,8 @@ func _start_game(mode: String) -> void:
 	coins = 0
 	answered = 0
 	cleared_encounters.clear()
+	triggered_traps.clear()
+	triggered_snakes.clear()
 	is_run_paused = false
 	auto_save_elapsed = 0.0
 	current_encounter = -1
@@ -215,7 +219,11 @@ func _generate_maze() -> void:
 			var horizontal := grid[_index(cell + Vector2i.LEFT)] == 0 and grid[_index(cell + Vector2i.RIGHT)] == 0
 			var vertical := grid[_index(cell + Vector2i.UP)] == 0 and grid[_index(cell + Vector2i.DOWN)] == 0
 			if horizontal or vertical: loop_candidates.append(cell)
-	loop_candidates.shuffle()
+	for i in range(loop_candidates.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var temp := loop_candidates[i]
+		loop_candidates[i] = loop_candidates[j]
+		loop_candidates[j] = temp
 	for i in mini(64, loop_candidates.size()):
 		grid[_index(loop_candidates[i])] = 0
 	walkable.clear()
@@ -280,12 +288,15 @@ func _build_dungeon_meshes() -> void:
 
 func _spawn_traps() -> void:
 	for i in 24:
+		if i in triggered_traps:
+			continue
 		var trap := Area3D.new()
 		trap.name = "Trap_%02d" % (i + 1)
 		trap.collision_layer = 4
 		trap.collision_mask = 2
 		trap.position = _world(walkable[ENCOUNTER_COUNT + i + 5])
 		trap.set_meta("trap_type", ["spikes", "flame", "poison", "blade"][i % 4])
+		trap.set_meta("hazard_id", i)
 		var shape_node := CollisionShape3D.new()
 		var shape := BoxShape3D.new()
 		shape.size = Vector3(1.7, 0.35, 1.7)
@@ -320,6 +331,9 @@ func _on_trap_entered(body: Node3D, trap: Area3D) -> void:
 	if body != player or bool(trap.get_meta("spent", false)) or not running:
 		return
 	trap.set_meta("spent", true)
+	var hazard_id := int(trap.get_meta("hazard_id", -1))
+	if hazard_id >= 0 and hazard_id not in triggered_traps:
+		triggered_traps.append(hazard_id)
 	var penalties := {"easy": 15, "average": 20, "hard": 30, "hell": 45}
 	time_left = maxf(0.0, time_left - float(penalties[difficulty]))
 	player.take_hit()
@@ -353,6 +367,8 @@ func _spawn_puddles_and_snakes() -> void:
 		ripple.tween_property(water, "scale", Vector3(1.035, 1.0, 0.97), ripple_time).set_trans(Tween.TRANS_SINE)
 		ripple.tween_property(water, "scale", Vector3(0.97, 1.0, 1.035), ripple_time + 0.21).set_trans(Tween.TRANS_SINE)
 	for i in 10:
+		if i in triggered_snakes:
+			continue
 		var snake := Area3D.new()
 		snake.name = "CartoonSnake_%02d" % i
 		snake.position = _world(walkable[215 + i * 5])
@@ -360,6 +376,7 @@ func _spawn_puddles_and_snakes() -> void:
 		snake.collision_mask = 2
 		snake.add_to_group("dungeon_generated")
 		snake.add_to_group("snake")
+		snake.set_meta("hazard_id", i)
 		add_child(snake)
 		var snake_shape := CollisionShape3D.new()
 		var snake_box := BoxShape3D.new()
@@ -402,6 +419,9 @@ func _spawn_puddles_and_snakes() -> void:
 func _on_snake_entered(body: Node3D, snake: Area3D) -> void:
 	if body != player or bool(snake.get_meta("spent", false)) or not running: return
 	snake.set_meta("spent", true)
+	var hazard_id := int(snake.get_meta("hazard_id", -1))
+	if hazard_id >= 0 and hazard_id not in triggered_snakes:
+		triggered_snakes.append(hazard_id)
 	time_left = maxf(0.0, time_left - 12.0)
 	player.take_hit()
 	message_label.text = "A dungeon snake struck! Jump over the next one. −12 seconds."
@@ -821,6 +841,8 @@ func _save_progress() -> void:
 		"answered": answered,
 		"current_encounter": current_encounter,
 		"cleared_encounters": cleared_encounters,
+		"triggered_traps": triggered_traps,
+		"triggered_snakes": triggered_snakes,
 		"player_position": [player.global_position.x, player.global_position.y, player.global_position.z],
 		"player_rotation_y": player.rotation.y,
 		"camera_yaw": camera_rig.yaw if is_instance_valid(camera_rig) else 0.0,
@@ -868,6 +890,12 @@ func _resume_saved_run() -> void:
 	cleared_encounters.clear()
 	for id in data.get("cleared_encounters", []):
 		cleared_encounters.append(int(id))
+	triggered_traps.clear()
+	for id in data.get("triggered_traps", []):
+		triggered_traps.append(int(id))
+	triggered_snakes.clear()
+	for id in data.get("triggered_snakes", []):
+		triggered_snakes.append(int(id))
 	answered = cleared_encounters.size()
 	current_encounter = int(data.get("current_encounter", -1))
 	questions = _make_questions()
