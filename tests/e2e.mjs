@@ -24,6 +24,11 @@ try {
     viewport: { width: 1440, height: 1040 },
   });
   const page = await context.newPage();
+  const cdp = await context.newCDPSession(page);
+  cdp.on("Runtime.exceptionThrown", ({ exceptionDetails }) =>
+    console.error("Browser exception details:", JSON.stringify(exceptionDetails)),
+  );
+  await cdp.send("Runtime.enable");
   page.on("pageerror", (e) => errors.push(e.stack || e.message));
   await page.goto(app.url);
   try {
