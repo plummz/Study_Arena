@@ -18,6 +18,10 @@ camera, Run, Jump, Map, and Pause controls. The GitHub Pages workflow exports
 the project to WebAssembly under `/dungeon/`; desktop launches continue to use
 the locally installed Godot executable.
 
+GitHub Pages must use **GitHub Actions** as its publishing source. The legacy
+"Deploy from a branch" source only publishes repository files and omits the
+generated WebAssembly dungeon.
+
 ## Current rules
 
 - 100 encounters and 24 one-use traps are generated per run.
