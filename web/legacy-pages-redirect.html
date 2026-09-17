@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="0; url=../">
+    <title>Opening Study Arena</title>
+  </head>
+  <body>
+    <p>Opening <a href="../">Study Arena</a>…</p>
+    <script>
+      const destination = new URL("../", window.location.href);
+      destination.search = window.location.search;
+      destination.hash = window.location.hash;
+      window.location.replace(destination);
+    </script>
+  </body>
+</html>

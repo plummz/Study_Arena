@@ -39,8 +39,9 @@ jobs:
         env:
           STUDY_ARENA_API_URL: ${{ vars.STUDY_ARENA_API_URL || 'https://study-arena-api-production.up.railway.app' }}
         run: |
-          mkdir -p _site
+          mkdir -p _site _site/web
           cp -R web/. _site/
+          cp web/legacy-pages-redirect.html _site/web/index.html
           node -e 'const fs=require("fs"); const value=(process.env.STUDY_ARENA_API_URL || "").replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"); const file="_site/index.html"; fs.writeFileSync(file, fs.readFileSync(file,"utf8").replace(/name="study-arena-api" content="[^"]*"/, `name="study-arena-api" content="${value}"`));'
           touch _site/.nojekyll
       - name: Export mobile-ready Godot dungeon
