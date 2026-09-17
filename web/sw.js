@@ -1,4 +1,4 @@
-const VERSION = "study-arena-shell-v10-api-guard";
+const VERSION = "study-arena-shell-v11-safe-first-load";
 const SHELL = [
   "./", "./index.html", "./style.css", "./tokens.css", "./app.js",
   "./studio.js", "./import.js", "./vault.js", "./api.js", "./config.js",

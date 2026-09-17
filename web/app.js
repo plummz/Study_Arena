@@ -2592,8 +2592,12 @@ async function handleLink() {
 async function boot() {
   if ("serviceWorker" in navigator && !window.Capacitor?.isNativePlatform?.()) {
     let refreshing = false;
+    const hadController = Boolean(navigator.serviceWorker.controller);
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (!refreshing) { refreshing = true; location.reload(); }
+      // A first-time worker claims an uncontrolled page after installation. Reloading
+      // in that case can interrupt account creation or sign-in. Existing controlled
+      // pages still reload once when a newer worker takes over.
+      if (hadController && !refreshing) { refreshing = true; location.reload(); }
     });
     navigator.serviceWorker.register(assetUrl("./sw.js")).then((registration) => registration.update()).catch(() => {});
   }

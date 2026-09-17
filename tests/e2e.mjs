@@ -58,10 +58,7 @@ try {
     name: "AI Study Studio",
     exact: true,
   });
-  await Promise.race([
-    studentOnboarding.waitFor(),
-    studentStudio.waitFor(),
-  ]);
+  await studentOnboarding.or(studentStudio).waitFor();
   if (await studentOnboarding.isVisible()) {
     await page.getByRole("button", { name: "Save my preferences" }).click();
     await page.getByRole("button", { name: "Skip for now" }).click();
@@ -216,10 +213,9 @@ try {
   await teacherPage.getByLabel("Email",{exact:true}).fill("teacher@study.test");
   await teacherPage.getByLabel("Password / local workspace password").fill("StudyArena!2026");
   await teacherPage.getByRole("button",{name:"Enter my study space"}).click();
-  await Promise.race([
-    teacherPage.getByRole("heading",{name:"What are you studying?"}).waitFor(),
-    teacherPage.getByRole("button",{name:"AI Study Studio",exact:true}).waitFor(),
-  ]);
+  await teacherPage.getByRole("heading",{name:"What are you studying?"})
+    .or(teacherPage.getByRole("button",{name:"AI Study Studio",exact:true}))
+    .waitFor();
   if(await teacherPage.getByRole("heading",{name:"What are you studying?"}).isVisible()){
     await teacherPage.getByRole("button",{name:"Save my preferences"}).click();
     await teacherPage.getByRole("button",{name:"Skip for now"}).click();
