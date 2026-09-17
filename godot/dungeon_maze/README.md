@@ -13,6 +13,11 @@ Godot 4.7 module for Study Arena. Start it from the repository root with
 - Escape: pause, save, resume, or return to Study Arena
 - Walk into an NPC or enemy: answer its question
 
+On phones and tablets, rotate to landscape and use the on-screen movement,
+camera, Run, Jump, Map, and Pause controls. The GitHub Pages workflow exports
+the project to WebAssembly under `/dungeon/`; desktop launches continue to use
+the locally installed Godot executable.
+
 ## Current rules
 
 - 100 encounters and 24 one-use traps are generated per run.

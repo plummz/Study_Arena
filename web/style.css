@@ -656,7 +656,7 @@ dialog textarea {
     width: 155px;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 900px), (pointer: coarse) and (orientation: portrait) {
   .shell {
     display: block;
   }
@@ -1152,7 +1152,7 @@ html[data-companion-motion="off"] .companion-dock::before { animation: none !imp
   85% { transform: translate3d(18px,-10px,0) rotate(6deg) scale(.97,1.04); }
   91% { transform: translate3d(-8px,-5px,0) rotate(-3deg); }
 }
-@media (max-width: 760px) {
+@media (max-width: 900px), (pointer: coarse) and (orientation: portrait) {
   .companion-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1263,6 +1263,7 @@ html[data-companion-motion="off"] .companion-dock::before { animation: none !imp
 .progress-story { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 18px; background: linear-gradient(135deg, var(--soft), var(--card)); }
 .story-companion { width: 120px; height: 150px; object-fit: contain; }
 .dungeon-companion-preview { display: flex; align-items: center; gap: 20px; }
+.dungeon-mobile-note { display: none; margin: 0 0 20px; padding: 14px 16px; border: 1px solid #d39b4b; border-radius: 14px; background: #fff4d8; color: #4b351c; }
 .dungeon-callout { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) 180px; align-items: center; gap: 24px; margin: 24px 0; padding: 28px; border: 1px solid #d39b4b; border-radius: 24px; background: radial-gradient(circle at 85% 30%, rgba(255,197,91,.22), transparent 34%), linear-gradient(135deg,#241c35,#3a2440 58%,#172a38); color: #fff; box-shadow: 0 18px 45px rgba(31,18,42,.2); }
 .dungeon-callout h2 { color: #fff; margin: .25rem 0; }
 .dungeon-callout p { color: #ece4f4; max-width: 720px; }
@@ -1271,7 +1272,7 @@ html[data-companion-motion="off"] .companion-dock::before { animation: none !imp
 .dungeon-gate:before,.dungeon-gate:after { content: ""; position: absolute; bottom: -12px; width: 48px; height: 32px; background: #745036; border: 4px solid #d5ae68; }.dungeon-gate:before { left: -20px; }.dungeon-gate:after { right: -20px; }
 .dungeon-gate span { font-size: 42px; color: #ffd76f; filter: drop-shadow(0 0 12px #ffbd4a); animation: dungeon-pulse 1.8s ease-in-out infinite; }.dungeon-gate b { position: absolute; bottom: 14px; font-size: 11px; letter-spacing: .12em; color: #f8dba2; }.dungeon-gate i { position: absolute; inset: 15px; border-radius: 60px 60px 4px 4px; background: repeating-linear-gradient(90deg,transparent 0 17px,rgba(255,255,255,.08) 18px 20px); }
 @keyframes dungeon-pulse { 50% { transform: translateY(-7px) scale(1.12); filter: drop-shadow(0 0 20px #ffd260); } }
-@media (max-width: 760px) {
+@media (max-width: 900px), (pointer: coarse) {
   .review-ratings,
   .streak-track { grid-template-columns: repeat(2, 1fr); }
   .companion-room { grid-template-columns: 1fr; }
@@ -1281,5 +1282,7 @@ html[data-companion-motion="off"] .companion-dock::before { animation: none !imp
   .story-companion { width: 80px; height: 110px; }
   .dungeon-callout { grid-template-columns: 1fr; }
   .dungeon-gate { display: none; }
+  .dungeon-mobile-note { display: block; }
+  .dungeon-companion-preview { align-items: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) { .dungeon-gate span { animation: none; } }

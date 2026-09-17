@@ -4,6 +4,7 @@ import { Client, ApiError } from "./api.js";
 import {
   API_CONFIGURED,
   API_UNAVAILABLE_MESSAGE,
+  IS_GITHUB_PAGES,
 } from "./config.js";
 import { reminders, pushRegistration } from "./native.js";
 import {
@@ -1380,14 +1381,22 @@ views.dungeon = async () => {
     { value: "hard", label: "Hard · 60 min · 5 mistakes · 4-coin hints" },
     { value: "hell", label: "Hell · 80 min · 3 mistakes · 5-coin hints" },
   ];
-  return `${title("3D learning game", "Dungeon of Knowledge", "Explore a medieval maze, answer 100 encounters and survive its traps.")}<div class="split"><section class="card"><div class="eyebrow">Your selected companion</div><div class="dungeon-companion-preview">${companionSprite(companion, "story-companion")}<div><h2>${h(companion.name)}</h2><p>${h(companion.note)}</p><p class="caption">The dungeon launches with this companion automatically.</p></div></div></section><section class="card"><h2>Choose difficulty and enter</h2>${form("launchDungeon", `${select("Difficulty", "difficulty", difficultyOptions)}<button type="submit" class="primary full">Play 3D Dungeon</button>`, async (f) => {
+  return `${title("3D learning game", "Dungeon of Knowledge", "Explore a medieval maze, answer 100 encounters and survive its traps.")}<div class="dungeon-mobile-note"><strong>Playing on a phone?</strong> Turn your phone sideways. The web dungeon includes touch controls for movement, camera, running, jumping, map, and pause.</div><div class="split"><section class="card"><div class="eyebrow">Your selected companion</div><div class="dungeon-companion-preview">${companionSprite(companion, "story-companion")}<div><h2>${h(companion.name)}</h2><p>${h(companion.note)}</p><p class="caption">The dungeon launches with this companion automatically.</p></div></div></section><section class="card"><h2>Choose difficulty and enter</h2>${form("launchDungeon", `${select("Difficulty", "difficulty", difficultyOptions)}<button type="submit" class="primary full">Play 3D Dungeon</button>`, async (f) => {
+    if (IS_GITHUB_PAGES) {
+      const repository = location.pathname.split("/").filter(Boolean)[0];
+      const dungeonUrl = new URL(`/${repository}/dungeon/index.html`, location.origin);
+      dungeonUrl.searchParams.set("companion", companionState().selected);
+      dungeonUrl.searchParams.set("difficulty", f.get("difficulty"));
+      location.assign(dungeonUrl.href);
+      return;
+    }
     const result = await client.mutate("/api/dungeon/launch", {
       companion: companionState().selected,
       difficulty: f.get("difficulty"),
     }, { timeout: 20000 });
     toast(result.already_running ? "The dungeon is already open." : `Opening ${companion.name}’s dungeon…`);
     companionReact("celebrate", `${companion.name} is ready for the dungeon!`, "hop");
-  })}</section></div><section class="card section"><h2>Controls</h2><div class="grid"><p><strong>WASD</strong><br><span class="caption">Move your companion</span></p><p><strong>Shift + WASD</strong><br><span class="caption">Run</span></p><p><strong>Arrow keys</strong><br><span class="caption">Move the camera</span></p><p><strong>M</strong><br><span class="caption">Open the map</span></p></div></section>`;
+  })}</section></div><section class="card section"><h2>Controls</h2><div class="grid"><p><strong>Phone</strong><br><span class="caption">Use the on-screen movement and camera pads</span></p><p><strong>RUN / JUMP</strong><br><span class="caption">Hold run while moving; jump over traps and snakes</span></p><p><strong>MAP / Ⅱ</strong><br><span class="caption">Open the map or pause and save</span></p><p><strong>Keyboard</strong><br><span class="caption">WASD, Shift, Space, arrow keys, M, and Escape</span></p></div></section>`;
 };
 function chunkBase64(bytes) {
   let binary = "";

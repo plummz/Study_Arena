@@ -20,9 +20,21 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.7.2
+      GODOT_RELEASE: 4.7.2-stable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Install Godot and Web export templates
+        run: |
+          curl -fsSL --retry 3 "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip" -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+          curl -fsSL --retry 3 "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz" -o /tmp/godot-templates.tpz
+          mkdir -p "/home/runner/.local/share/godot/export_templates/${GODOT_VERSION}.stable" /tmp/godot-templates
+          unzip -q /tmp/godot-templates.tpz -d /tmp/godot-templates
+          cp -R /tmp/godot-templates/templates/. "/home/runner/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
       - name: Prepare static site
         env:
           STUDY_ARENA_API_URL: ${{ vars.STUDY_ARENA_API_URL || 'https://study-arena-api-production.up.railway.app' }}
@@ -31,6 +43,14 @@ jobs:
           cp -R web/. _site/
           node -e 'const fs=require("fs"); const value=(process.env.STUDY_ARENA_API_URL || "").replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"); const file="_site/index.html"; fs.writeFileSync(file, fs.readFileSync(file,"utf8").replace(/name="study-arena-api" content="[^"]*"/, `name="study-arena-api" content="${value}"`));'
           touch _site/.nojekyll
+      - name: Export mobile-ready Godot dungeon
+        run: |
+          mkdir -p _site/dungeon
+          godot --headless --path godot/dungeon_maze --import
+          godot --headless --path godot/dungeon_maze --export-release Web "$GITHUB_WORKSPACE/_site/dungeon/index.html"
+          test -s _site/dungeon/index.html
+          test -s _site/dungeon/index.wasm
+          test -s _site/dungeon/index.pck
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site

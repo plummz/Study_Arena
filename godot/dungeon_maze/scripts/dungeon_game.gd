@@ -3,6 +3,7 @@ extends Node3D
 const PlayerAvatar = preload("res://scripts/player_avatar.gd")
 const ThirdPersonCamera = preload("res://scripts/third_person_camera.gd")
 const CartoonActor = preload("res://scripts/cartoon_actor.gd")
+const MobileControls = preload("res://scripts/mobile_controls.gd")
 const GRID_SIZE := 31
 const CELL_SIZE := 5.4
 const ENCOUNTER_COUNT := 100
@@ -71,6 +72,9 @@ func _ready() -> void:
 		_save_companion_choice(selected_companion)
 	_build_environment()
 	_build_ui()
+	var mobile_controls := MobileControls.new()
+	mobile_controls.name = "MobileControls"
+	add_child(mobile_controls)
 	smoke_mode = "--smoke" in OS.get_cmdline_user_args()
 	if smoke_mode:
 		call_deferred("_smoke_test")
@@ -804,12 +808,17 @@ func _toggle_pause() -> void:
 
 func _save_and_return_home() -> void:
 	_save_progress()
-	OS.shell_open(STUDY_ARENA_HOME)
-	get_tree().quit()
+	_open_study_arena()
 
 func _return_home() -> void:
-	OS.shell_open(STUDY_ARENA_HOME)
-	get_tree().quit()
+	_open_study_arena()
+
+func _open_study_arena() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.location.href = '../#home'", true)
+	else:
+		OS.shell_open(STUDY_ARENA_HOME)
+		get_tree().quit()
 
 func _retry_game() -> void:
 	_clear_saved_run()
@@ -1197,6 +1206,11 @@ func _load_companion_choice() -> String:
 	return "moss"
 
 func _argument_value(prefix: String) -> String:
+	if OS.has_feature("web"):
+		var key := prefix.trim_prefix("--").trim_suffix("=")
+		var web_value: Variant = JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('%s') || ''" % key, true)
+		if not String(web_value).is_empty():
+			return String(web_value)
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with(prefix):
 			return argument.trim_prefix(prefix)
