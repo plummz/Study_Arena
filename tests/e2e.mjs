@@ -58,7 +58,7 @@ try {
     name: "AI Study Studio",
     exact: true,
   });
-  await studentOnboarding.or(studentStudio).waitFor();
+  await studentOnboarding.or(studentStudio).first().waitFor();
   if (await studentOnboarding.isVisible()) {
     await page.getByRole("button", { name: "Save my preferences" }).click();
     await page.getByRole("button", { name: "Skip for now" }).click();
@@ -215,6 +215,7 @@ try {
   await teacherPage.getByRole("button",{name:"Enter my study space"}).click();
   await teacherPage.getByRole("heading",{name:"What are you studying?"})
     .or(teacherPage.getByRole("button",{name:"AI Study Studio",exact:true}))
+    .first()
     .waitFor();
   if(await teacherPage.getByRole("heading",{name:"What are you studying?"}).isVisible()){
     await teacherPage.getByRole("button",{name:"Save my preferences"}).click();
