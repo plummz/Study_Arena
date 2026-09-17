@@ -1,4 +1,4 @@
-const VERSION = "study-arena-shell-v12-lean-install";
+const VERSION = "study-arena-shell-v13-endpoint-routing";
 const SHELL = [
   "./", "./index.html", "./style.css", "./tokens.css", "./app.js",
   "./studio.js", "./import.js", "./vault.js", "./api.js", "./config.js",
