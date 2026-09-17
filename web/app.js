@@ -500,7 +500,7 @@ async function authPage(mode = "login") {
                   email,
                   password,
                   device: navigator.userAgent.slice(0, 80),
-                });
+                }, { timeout: 30000 });
               } catch (error) {
                 if (error instanceof ApiError) throw error;
               }

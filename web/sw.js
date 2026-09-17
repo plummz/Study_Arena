@@ -1,12 +1,12 @@
-const VERSION = "study-arena-shell-v11-safe-first-load";
+const VERSION = "study-arena-shell-v12-lean-install";
 const SHELL = [
   "./", "./index.html", "./style.css", "./tokens.css", "./app.js",
   "./studio.js", "./import.js", "./vault.js", "./api.js", "./config.js",
   "./native.js", "./icon.svg", "./manifest.webmanifest", "./starter.json",
-  ...["moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova", "ember", "bubbles", "byte", "clover", "mochi", "comet", "pebble", "melody", "taro", "sol"]
-    .map((id) => `./assets/companions/${id}.png`),
 ].map((path) => new URL(path, self.location.href).href);
-const SHELL_PATHS = new Set(SHELL.map((url) => new URL(url).pathname));
+const COMPANION_ASSETS = ["moss", "lumi", "coral", "sky", "plum", "sunny", "mint", "nova", "ember", "bubbles", "byte", "clover", "mochi", "comet", "pebble", "melody", "taro", "sol"]
+  .map((id) => new URL(`./assets/companions/${id}.png`, self.location.href).href);
+const SHELL_PATHS = new Set([...SHELL, ...COMPANION_ASSETS].map((url) => new URL(url).pathname));
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(VERSION).then((cache) => cache.addAll(SHELL)));
   self.skipWaiting();
