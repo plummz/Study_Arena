@@ -5,7 +5,7 @@
     "E2E02A Private text upload creates and opens a local reviewer",
     "E2E03 Quiz downloaded; password absent from plaintext IndexedDB record",
     "E2E04 Solo answer and explanation work without network",
-    "E2E05 Service-worker offline reload and encrypted workspace unlock",
+    "E2E05 Offline reload through the service worker resumes the remembered encrypted workspace without re-entering the password",
     "E2E06 Quiz resumes from the saved next question",
     "E2E07 Focus start/pause/finish; short session saved without reward",
     "E2E08 360px mobile reflow without horizontal overflow",
@@ -19,6 +19,7 @@
     "E2E17 Purchased confetti plays on celebrate and is hidden under reduced motion",
     "E2E18 Warm paper theme bought and equipped; free high-contrast theme applied from Settings",
     "E2E19 Private note to self is written, shown as text, and hidden from Home",
+    "E2E22 Password Show/Hide toggle works; “Keep me signed in” is offered and on by default",
     "E2E20 375px login card is centred, stable when the viewport height changes, no overflow; notch top padding: 47px",
     "E2E21 932px landscape phone uses the mobile bottom navigation",
     "E2E10 No uncaught browser exceptions"

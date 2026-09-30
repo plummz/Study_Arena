@@ -64,6 +64,48 @@ final class Db implements AutoCloseable {
     }
   }
 
+  static final java.util.concurrent.ExecutorService EXTERNAL =
+      java.util.concurrent.Executors.newCachedThreadPool(
+          task -> {
+            Thread t = new Thread(task, "external-call");
+            t.setDaemon(true);
+            return t;
+          });
+
+  // Runs a slow external call (the AI service) with the database lock released, so other
+  // students' requests are served meanwhile. Requests hold `synchronized (db)` on a single
+  // connection, so the caller's transaction is committed first and restarted afterwards.
+  // The call must not use the database.
+  <T> T withoutLock(java.util.concurrent.Callable<T> call) throws Exception {
+    if (!Thread.holdsLock(this)) return call.call();
+    boolean transaction = !c.getAutoCommit();
+    if (transaction) c.commit();
+    java.util.concurrent.CompletableFuture<T> future =
+        java.util.concurrent.CompletableFuture.supplyAsync(
+            () -> {
+              try {
+                return call.call();
+              } catch (Exception e) {
+                throw new java.util.concurrent.CompletionException(e);
+              }
+            },
+            EXTERNAL);
+    // The callback needs this monitor to notify, so it cannot fire before wait() releases it.
+    future.whenComplete((value, error) -> {
+      synchronized (this) {
+        notifyAll();
+      }
+    });
+    while (!future.isDone()) wait();
+    if (transaction) c.setAutoCommit(false);
+    try {
+      return future.join();
+    } catch (java.util.concurrent.CompletionException e) {
+      if (e.getCause() instanceof Exception cause) throw cause;
+      throw e;
+    }
+  }
+
   int exec(String sql, Object... args) {
     try (PreparedStatement s = c.prepareStatement(sql)) {
       bind(s, args);

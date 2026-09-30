@@ -198,6 +198,47 @@ public final class DomainTests {
         Studio.unfence("```json\n[{\"front\":\"a\"}]\n```").equals("[{\"front\":\"a\"}]")
             && Studio.unfence("[1]").equals("[1]"),
         "AI05 fenced JSON study tools are unwrapped; plain JSON is untouched");
+    check(
+        Studio.rateLimitMessage("{\"error\":{\"message\":\"Quota exceeded ... Please retry in 48.579626005s.\"}}")
+            .contains("about 49 seconds"),
+        "AI06 per-minute quota message names the wait time from Google's answer");
+    check(
+        Studio.rateLimitMessage("{\"quotaId\":\"GenerateRequestsPerDayPerProjectPerModel-FreeTier\"}")
+            .contains("midnight Pacific"),
+        "AI07 daily quota message says when it resets");
+    check(
+        Studio.requestBody("gemini-3.5-flash", "quiz", List.of()).contains("\"thinkingLevel\":\"low\"")
+            && Studio.requestBody("gemini-3.5-flash", "quiz", List.of()).contains("application/json")
+            && !Studio.requestBody("gemini-2.5-flash", "summary", List.of()).contains("thinking"),
+        "AI08 low thinking only for Gemini 3 models; JSON tools request JSON output");
+    try (Db db = new Db(":memory:")) {
+      db.schema();
+      long[] other = new long[1];
+      long start = System.nanoTime();
+      Thread slowRequest =
+          new Thread(
+              () -> {
+                synchronized (db) {
+                  try {
+                    db.c.setAutoCommit(false);
+                    db.withoutLock(() -> { Thread.sleep(800); return 1; });
+                    check(!db.c.getAutoCommit(), "LOCK02 the request's transaction resumes after the external call");
+                    db.c.commit();
+                    db.c.setAutoCommit(true);
+                  } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                  }
+                }
+              });
+      slowRequest.start();
+      Thread.sleep(150);
+      synchronized (db) {
+        other[0] = System.nanoTime() - start;
+        db.one("SELECT 1");
+      }
+      slowRequest.join();
+      check(other[0] < 700_000_000L, "LOCK01 another request uses the database while an AI call is in flight");
+    }
     System.out.println(passed + " domain/security assertions passed.");
   }
 }

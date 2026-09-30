@@ -56,8 +56,10 @@ final class Studio {
     a = api;
     d = api.db;
     apiKey = Objects.toString(System.getenv("GEMINI_API_KEY"), "").strip();
-    model = System.getenv().getOrDefault("GEMINI_MODEL", "gemini-3.8-flash");
-    fallbackModel = System.getenv().getOrDefault("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash");
+    // Defaults favour free-tier headroom: gemini-3.8-flash allowed only 20 free requests on the
+    // test key, while the 3.5 Flash models have larger, separate quotas.
+    model = System.getenv().getOrDefault("GEMINI_MODEL", "gemini-3.5-flash");
+    fallbackModel = System.getenv().getOrDefault("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite");
     // Status only; the key itself is never logged.
     System.out.println(
         apiKey.isBlank()
@@ -363,22 +365,17 @@ final class Studio {
         mime.equals("text/plain")
             ? map("text", "SOURCE:\n" + new String(file, StandardCharsets.UTF_8))
             : map("inlineData", map("mimeType", mime, "data", Base64.getEncoder().encodeToString(file)));
-    Map<String, Object> request =
-        map(
-            "contents",
-            List.of(map("role", "user", "parts", List.of(filePart, map("text", prompt(kind, instructions))))),
-            "generationConfig",
-            JSON_KINDS.contains(kind)
-                ? map("maxOutputTokens", 16000, "responseMimeType", "application/json")
-                : map("maxOutputTokens", 16000));
-    String body = json(request), used = model;
-    HttpResponse<String> response = send(geminiCall(model, body));
-    // A model under heavy demand answers 500/503 ("high demand"); retry once on the fallback
-    // model. Only the status is logged, never the request or key.
-    if ((response.statusCode() == 500 || response.statusCode() == 503) && !fallbackModel.equals(model)) {
-      System.err.println("ai_error status=" + response.statusCode() + " retrying_with=" + fallbackModel);
+    List<Object> contents =
+        List.of(map("role", "user", "parts", List.of(filePart, map("text", prompt(kind, instructions)))));
+    String used = model;
+    HttpResponse<String> response = send(geminiCall(model, requestBody(model, kind, contents)));
+    // A busy model (500/503) or a used-up quota (429) is retried once on the fallback model,
+    // which has its own free quota. Only the status is logged, never the request or key.
+    int status = response.statusCode();
+    if ((status == 429 || status == 500 || status == 503) && !fallbackModel.equals(model)) {
+      System.err.println("ai_error status=" + status + " retrying_with=" + fallbackModel);
       used = fallbackModel;
-      response = send(geminiCall(used, body));
+      response = send(geminiCall(used, requestBody(used, kind, contents)));
     }
     if (response.statusCode() / 100 != 2) System.err.println("ai_error status=" + response.statusCode());
     requireAiSuccess(response.statusCode(), response.body(), used);
@@ -394,6 +391,16 @@ final class Studio {
     return start > 0 && end > start ? t.substring(start + 1, end).strip() : t;
   }
 
+  // Low thinking keeps study tools fast and spends fewer free-tier tokens; only Gemini 3
+  // models accept thinkingLevel.
+  static String requestBody(String modelName, String kind, List<Object> contents) {
+    Map<String, Object> config = new LinkedHashMap<>();
+    config.put("maxOutputTokens", 16000);
+    if (JSON_KINDS.contains(kind)) config.put("responseMimeType", "application/json");
+    if (modelName.startsWith("gemini-3")) config.put("thinkingConfig", map("thinkingLevel", "low"));
+    return json(map("contents", contents, "generationConfig", config));
+  }
+
   HttpRequest geminiCall(String modelName, String body) {
     return HttpRequest.newBuilder(URI.create(GEMINI_URL + modelName + ":generateContent"))
         .timeout(Duration.ofSeconds(180))
@@ -403,14 +410,20 @@ final class Studio {
         .build();
   }
 
+  // The AI call can take up to 3 minutes; the database lock is released meanwhile so other
+  // students are not kept waiting.
   HttpResponse<String> send(HttpRequest request) {
     try {
-      return http.send(request, HttpResponse.BodyHandlers.ofString());
+      return d.withoutLock(() -> http.send(request, HttpResponse.BodyHandlers.ofString()));
+    } catch (Fault f) {
+      throw f;
     } catch (IOException ex) {
       throw new Fault(502, "AI_UNAVAILABLE", "The AI service could not be reached. Check the server's internet connection and try again.");
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
       throw new Fault(503, "AI_UNAVAILABLE", "The AI request was interrupted. Try again.");
+    } catch (Exception ex) {
+      throw new Fault(502, "AI_UNAVAILABLE", "The AI service could not complete this request.");
     }
   }
 
@@ -420,13 +433,25 @@ final class Studio {
     if (status / 100 == 2) return;
     if (status == 401 || status == 403 || (status == 400 && body.contains("API_KEY_INVALID")))
       throw new Fault(502, "AI_KEY_REJECTED", "The server's Gemini key was rejected. Ask the server owner to check GEMINI_API_KEY.");
-    if (status == 429)
-      throw new Fault(503, "AI_RATE_LIMITED", "The AI service is busy or today's free limit was reached. Try again later.");
+    if (status == 429) throw new Fault(503, "AI_RATE_LIMITED", rateLimitMessage(body));
     if (status == 500 || status == 503)
       throw new Fault(503, "AI_BUSY", "Gemini is very busy right now. Try again in a minute.");
     if (status == 404)
       throw new Fault(502, "AI_MODEL_UNAVAILABLE", "The Gemini model \"" + model + "\" isn't available to this key. Ask the server owner to set GEMINI_MODEL.");
     throw new Fault(502, "AI_UNAVAILABLE", "The AI service could not complete this request.");
+  }
+
+  // Google's 429 says which quota ran out: a per-day quota resets at midnight Pacific time
+  // (3–4 PM in the Philippines); a per-minute one names how long to wait.
+  static String rateLimitMessage(String body) {
+    if (body.contains("PerDay"))
+      return "Today's free AI limit is used up. It resets at midnight Pacific time (about 3–4 PM Philippine time). Plain-text files can still use the local draft generator.";
+    java.util.regex.Matcher wait = java.util.regex.Pattern.compile("retry in ([0-9.]+)s|\"retryDelay\": *\"([0-9.]+)s\"").matcher(body);
+    if (wait.find()) {
+      long seconds = (long) Math.ceil(Double.parseDouble(wait.group(1) != null ? wait.group(1) : wait.group(2)));
+      return "The free AI limit for this minute is used up. Try again in about " + Math.max(5, seconds) + " seconds.";
+    }
+    return "The free AI limit was reached. Wait a minute and try again.";
   }
 
   // Joins the answer's text parts, skipping thought summaries. A blocked or empty answer

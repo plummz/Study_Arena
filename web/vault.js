@@ -100,6 +100,38 @@ export class Vault {
     return this.writes;
   }
 }
+// "Keep me signed in": the workspace key is a non-extractable CryptoKey, so IndexedDB can hold
+// it without its raw bytes ever being readable by script. The password itself is never stored.
+// Signing out (lock) deletes it; without it the password is needed again.
+const SESSION = "__remembered_session__";
+export async function rememberSession(vault) {
+  await write(SESSION, { email: vault.email, key: vault.key, salt: vault.salt });
+}
+export async function forgetSession() {
+  const db = await database();
+  await new Promise((ok, no) => {
+    const tx = db.transaction("vaults", "readwrite");
+    tx.objectStore("vaults").delete(SESSION);
+    tx.oncomplete = ok;
+    tx.onerror = () => no(tx.error);
+  });
+}
+export async function resumeSession() {
+  const session = await read(SESSION).catch(() => null);
+  if (!session?.key) return null;
+  const record = await read(session.email);
+  try {
+    const data = JSON.parse(
+      dec.decode(
+        await crypto.subtle.decrypt({ name: "AES-GCM", iv: record.iv }, session.key, record.encrypted),
+      ),
+    );
+    return new Vault(session.email, session.key, record.salt, data);
+  } catch {
+    await forgetSession();
+    return null;
+  }
+}
 export const uuid = () => crypto.randomUUID();
 export const digest = async (bytes) =>
   Array.from(

@@ -91,7 +91,7 @@ var map_open := false
 var selected_companion := "moss"
 var linked := false
 var launch_difficulty := ""
-var settings := {"sensitivity": 1.0, "invert_y": false, "fov": 74.0, "reduced_motion": false, "captions": true, "quality": "high", "volume": 0.8}
+var settings := {"sensitivity": 1.0, "touch_sensitivity": 1.0, "touch_size": 1.0, "invert_y": false, "fov": 74.0, "reduced_motion": false, "captions": true, "quality": "high", "volume": 0.8}
 var world_env: Environment
 var effects_root: Node3D
 var hud: Control
@@ -159,6 +159,10 @@ func _ready() -> void:
 	mobile_controls.name = "MobileControls"
 	mobile_controls.game = self
 	hud.get_parent().add_child(mobile_controls)
+	# Phones show the 720-unit-tall interface only a few centimetres high; enlarge menus,
+	# questions and HUD text when touch controls are active (visible is decided in their _ready).
+	if mobile_controls.visible:
+		get_window().content_scale_factor = 1.3
 	_apply_settings()
 	smoke_mode = "--smoke" in OS.get_cmdline_user_args()
 	var shot_dir := _argument_value("--screenshots=")
@@ -939,8 +943,10 @@ func _show_question(id: int, kind: String, title: String) -> void:
 			_style_answer(button, "normal")
 	hint_button.visible = options.size() > 2
 	hint_button.disabled = not (question.removed as Array).is_empty()
-	hint_button.text = "Hint · remove two wrong answers  (%d coins · H)" % int(DIFFICULTIES[difficulty].hint)
-	feedback_label.text = "The Wise Wanderer's kin mark nearby traps on your map when you answer correctly." if kind == "npc" else "Answer to banish the %s. Keys 1–%d choose." % [title.to_lower(), options.size()]
+	var touch := is_instance_valid(mobile_controls) and mobile_controls.visible
+	hint_button.text = ("Hint · remove two wrong answers  (%d coins)" if touch else "Hint · remove two wrong answers  (%d coins · H)") % int(DIFFICULTIES[difficulty].hint)
+	var how := "Tap an answer." if touch else "Keys 1–%d choose." % options.size()
+	feedback_label.text = "The Wise Wanderer's kin mark nearby traps on your map when you answer correctly." if kind == "npc" else "Answer to banish the %s. %s" % [title.to_lower(), how]
 	feedback_label.add_theme_color_override("font_color", C_MUTED)
 	continue_button.visible = false
 	if answer_buttons[0].is_inside_tree() and not smoke_mode:
@@ -1995,9 +2001,12 @@ func _apply_settings() -> void:
 		audio.set_volume(float(settings.volume))
 	if is_instance_valid(player):
 		player.mouse_sensitivity = 0.0022 * float(settings.sensitivity)
+		player.touch_sensitivity = float(settings.touch_sensitivity)
 		player.invert_y = bool(settings.invert_y)
 		player.base_fov = float(settings.fov)
 		player.reduced_motion = bool(settings.reduced_motion)
+	if is_instance_valid(mobile_controls):
+		mobile_controls.set_scale_factor(float(settings.touch_size))
 	var high: bool = settings.quality == "high"
 	if is_instance_valid(kit):
 		kit.quality_high = high
@@ -2271,7 +2280,9 @@ func _build_pause_panel() -> void:
 	form.add_theme_constant_override("h_separation", 16)
 	form.add_theme_constant_override("v_separation", 6)
 	stack.add_child(form)
-	_slider_row(form, "Look sensitivity", "sensitivity", 0.3, 2.5, 0.05)
+	_slider_row(form, "Look sensitivity (mouse)", "sensitivity", 0.3, 2.5, 0.05)
+	_slider_row(form, "Touch look speed", "touch_sensitivity", 0.2, 2.5, 0.05)
+	_slider_row(form, "Touch control size", "touch_size", 0.8, 1.5, 0.05)
 	_slider_row(form, "Field of view", "fov", 60.0, 95.0, 1.0)
 	_slider_row(form, "Volume", "volume", 0.0, 1.0, 0.05)
 	_check_row(form, "Invert look (Y)", "invert_y")

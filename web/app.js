@@ -1,4 +1,4 @@
-import { Vault, uuid, digest } from "./vault.js";
+import { Vault, uuid, digest, rememberSession, forgetSession, resumeSession } from "./vault.js";
 import { previewCSV } from "./import.js";
 import { Client, ApiError } from "./api.js";
 import {
@@ -6,6 +6,8 @@ import {
   API_UNAVAILABLE_MESSAGE,
   API_URL,
   IS_GITHUB_PAGES,
+  IS_NATIVE,
+  DUNGEON_WEB_URL,
 } from "./config.js";
 import { reminders, pushRegistration } from "./native.js";
 import {
@@ -78,6 +80,23 @@ const area = (label, name, value = "", extra = "") =>
   `<div class="field"><label for="f-${h(name)}">${h(label)}</label><textarea id="f-${h(name)}" name="${h(name)}" ${extra}>${h(value)}</textarea></div>`;
 const select = (label, name, options, value = "") =>
   `<div class="field"><label for="f-${h(name)}">${h(label)}</label><select id="f-${h(name)}" name="${h(name)}">${options.map((o) => `<option value="${h(o.value ?? o.id)}" ${String(o.value ?? o.id) === String(value) ? "selected" : ""}>${h(o.label ?? o.title)}</option>`).join("")}</select></div>`;
+// A password input with a Show/Hide toggle. The toggle keeps the input focused, so the phone
+// keyboard stays open while checking what was typed.
+function passwordField(label, name, extra = "") {
+  const id = `f-${h(name)}`,
+    action = `b${++counter}`;
+  handlers[action] = () => {
+    const input = document.getElementById(id),
+      toggle = document.querySelector(`[data-action="${action}"]`);
+    if (!input || !toggle) return;
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    toggle.textContent = show ? "Hide" : "Show";
+    toggle.setAttribute("aria-pressed", String(show));
+    toggle.setAttribute("aria-label", show ? "Hide password" : "Show password");
+  };
+  return `<div class="field"><label for="${id}">${h(label)}</label><div class="password-wrap"><input id="${id}" name="${h(name)}" type="password" ${extra}><button type="button" class="reveal" data-action="${action}" aria-controls="${id}" aria-pressed="false" aria-label="Show password">Show</button></div></div>`;
+}
 const check = (label, name, checked = false) =>
   `<label class="check"><input type="checkbox" name="${h(name)}" ${checked ? "checked" : ""}>${h(label)}</label>`;
 const empty = (title, text) =>
@@ -379,8 +398,10 @@ async function load(path, opts) {
   try {
     return await client.request(path, { ...(user ? {} : {timeout: 1000}), ...opts });
   } catch (error) {
-    if (user) throw error;
-    const seed = await fetch(assetUrl("./starter.json")).then((r) => r.json());
+    // Server answers (errors with a status) stand for signed-in students; a network failure
+    // with nothing cached falls back to the bundled starter content, labelled offline.
+    if (user && (error instanceof ApiError || navigator.onLine)) throw error;
+    const seed = await fetch(assetUrl("./starter.json")).then((r) => r.json()).catch(() => ({}));
     if (seed[path]) return { ...seed[path], offline: true };
     throw error;
   }
@@ -464,6 +485,11 @@ async function go(next, data = {}) {
     view.after?.();
     $("#main")?.focus({ preventScroll: true });
   } catch (error) {
+    // Only an ended session (AUTH_REQUIRED) signs out; REAUTH_REQUIRED just asks to confirm.
+    if (n === generation && user && error instanceof ApiError && error.code === "AUTH_REQUIRED") {
+      await sessionExpired();
+      return;
+    }
     if (n === generation) {
       shell(
         `${title("Your space", "Let’s try that again", "Your local study work remains saved.")}<div class="error" role="alert">${h(error.message)}</div><div class="spaced">${button("Try again", () => go(next, data), "primary")}</div>`,
@@ -480,12 +506,23 @@ async function requireLogin() {
 }
 async function lock() {
   if (vault) await vault.save();
+  await forgetSession().catch(() => {});
   user = null;
   vault = null;
   client = new Client();
   cleanup();
   cleanup = () => {};
   await authPage();
+}
+// In-app browsers (Messenger, Facebook, Instagram…) and "Desktop site" mode can ignore the
+// mobile viewport, shrinking the app and dropping saved sign-ins. Point students to Chrome.
+function browserWarning() {
+  const ua = navigator.userAgent || "";
+  if (/FBAN|FBAV|FB_IAB|Messenger|Instagram|Line\/|MicroMessenger|TikTok/i.test(ua))
+    return "You’re in an app’s built-in browser, which can shrink this page and forget your sign-in. For the best experience, use the ⋮ menu → “Open in Chrome” (or your browser), then add Study Arena to your home screen.";
+  if (matchMedia("(pointer: coarse)").matches && innerWidth > screen.width * 1.3)
+    return "This page is showing in desktop mode, which makes everything tiny. Turn off “Desktop site” in your browser’s ⋮ menu.";
+  return "";
 }
 async function authPage(mode = "login") {
   // A pending page load must not replace the sign-in form after navigation.
@@ -498,7 +535,7 @@ async function authPage(mode = "login") {
     mode === "register"
       ? form(
           "register",
-          `${field("Display name", "display_name", "", "text", 'required maxlength="40" minlength="2"')}${field("School email", "email", "", "email", 'required autocomplete="email"')}${field("School ID", "school_id", "", "text", 'required maxlength="40"')}${field("Password · at least 12 characters", "password", "", "password", 'required minlength="12" maxlength="128" autocomplete="new-password"')}${select(
+          `${field("Display name", "display_name", "", "text", 'required maxlength="40" minlength="2"')}${field("School email", "email", "", "email", 'required autocomplete="email"')}${field("School ID", "school_id", "", "text", 'required maxlength="40"')}${passwordField("Password · at least 12 characters", "password", 'required minlength="12" maxlength="128" autocomplete="new-password"')}${select(
             "Age group",
             "age_band",
             [
@@ -533,7 +570,7 @@ async function authPage(mode = "login") {
           )
         : form(
             "login",
-            `${field("Email", "email", localStorage.getItem("last-email") || "", "email", 'required autocomplete="username"')}${field("Password / local workspace password", "password", "", "password", 'required maxlength="128" autocomplete="current-password"')}<p class="caption">Your study cache is encrypted on this device. Use the same password to unlock it without internet.</p><button class="primary" type="submit">Enter my study space</button>`,
+            `${field("Email", "email", localStorage.getItem("last-email") || "", "email", 'required autocomplete="username"')}${passwordField("Password / local workspace password", "password", 'required maxlength="128" autocomplete="current-password"')}${check("Keep me signed in on this device", "remember", true)}<p class="caption">Your study cache is encrypted on this device. Use the same password to unlock it without internet. On a shared or school computer, untick “Keep me signed in” and use Lock when you finish.</p><button class="primary" type="submit">Enter my study space</button>`,
             async (f) => {
               const email = f.get("email").trim().toLowerCase(),
                 password = f.get("password");
@@ -565,6 +602,8 @@ async function authPage(mode = "login") {
               client = new Client(vault);
               localStorage.setItem("last-email", email);
               await vault.save();
+              if (f.has("remember")) await rememberSession(vault);
+              else await forgetSession();
               applyTheme(vault.data.theme);
               if (
                 localStorage.getItem("guest-result") &&
@@ -590,11 +629,14 @@ async function authPage(mode = "login") {
                 companionReact("wave", `Welcome back! ${companionById(companionState().selected).name} is ready to study.`);
             },
         );
+  const browserNotice = browserWarning()
+    ? `<div class="banner" role="note">${h(browserWarning())}</div>`
+    : "";
   const hostedNotice = !API_CONFIGURED
     ? `<div class="banner" role="status"><strong>Guest preview</strong><p>${h(API_UNAVAILABLE_MESSAGE)}</p></div>`
     : "";
   $("#app").innerHTML =
-    `<main id="main" class="auth-screen" tabindex="-1"><div class="auth"><a class="brand" href="#home"><img src="${assetUrl("./icon.svg")}" alt=""><span>study arena<small>Your own pace</small></span></a><div class="card"><div class="eyebrow">A calm place to grow</div><h1>${mode === "register" ? "Make room for learning." : mode === "reset" ? "Let’s get you back in." : "Welcome to your study space."}</h1><p>One topic, one small step, one good study day.</p>${hostedNotice}<div id="auth-error"></div>${body}<div class="divider"></div><div class="actions">${button(mode === "register" ? "Already registered? Sign in" : "Create an account", () => authPage(mode === "register" ? "login" : "register"), "subtle small")}${button("Forgot password", () => authPage("reset"), "subtle small")}${button("Explore as a guest", () => go("home"), "subtle small")}</div>${health.demo ? `<div class="banner spaced">Synthetic demo accounts: student@study.test, teacher@study.test, admin@study.test. Password: StudyArena!2026. ${button("Open demo email inbox", demoMail, "small")}</div>` : ""}</div></div></main>`;
+    `<main id="main" class="auth-screen" tabindex="-1"><div class="auth"><a class="brand" href="#home"><img src="${assetUrl("./icon.svg")}" alt=""><span>study arena<small>Your own pace</small></span></a><div class="card"><div class="eyebrow">A calm place to grow</div><h1>${mode === "register" ? "Make room for learning." : mode === "reset" ? "Let’s get you back in." : "Welcome to your study space."}</h1><p>One topic, one small step, one good study day.</p>${browserNotice}${hostedNotice}<div id="auth-error"></div>${body}<div class="divider"></div><div class="actions">${button(mode === "register" ? "Already registered? Sign in" : "Create an account", () => authPage(mode === "register" ? "login" : "register"), "subtle small")}${button("Forgot password", () => authPage("reset"), "subtle small")}${button("Explore as a guest", () => go("home"), "subtle small")}</div>${health.demo ? `<div class="banner spaced">Synthetic demo accounts: student@study.test, teacher@study.test, admin@study.test. Password: StudyArena!2026. ${button("Open demo email inbox", demoMail, "small")}</div>` : ""}</div></div></main>`;
 }
 async function demoMail() {
   const email = prompt(
@@ -1474,9 +1516,12 @@ views.dungeon = async () => {
     const run = rewardRun
       ? await client.mutate("/api/dungeon/runs", { companion: companionId, difficulty })
       : null;
-    if (IS_GITHUB_PAGES) {
-      const repository = location.pathname.split("/").filter(Boolean)[0];
-      const dungeonUrl = new URL(`/${repository}/dungeon/index.html`, location.origin);
+    if (IS_GITHUB_PAGES || IS_NATIVE) {
+      // The Android app has no local game server, so it opens the published web dungeon
+      // in the phone's browser; a signed-in run ticket still lets coins count.
+      const dungeonUrl = IS_NATIVE
+        ? new URL(DUNGEON_WEB_URL)
+        : new URL(`/${location.pathname.split("/").filter(Boolean)[0]}/dungeon/index.html`, location.origin);
       dungeonUrl.searchParams.set("companion", companionId);
       dungeonUrl.searchParams.set("difficulty", difficulty);
       if (run) {
@@ -1484,7 +1529,8 @@ views.dungeon = async () => {
         dungeonUrl.searchParams.set("ticket", run.ticket);
         dungeonUrl.searchParams.set("api", API_URL);
       }
-      location.assign(dungeonUrl.href);
+      if (IS_NATIVE) window.open(dungeonUrl.href, "_blank");
+      else location.assign(dungeonUrl.href);
       return;
     }
     const result = await client.mutate("/api/dungeon/launch", {
@@ -2692,7 +2738,7 @@ async function handleLink() {
       "Set a new password",
       form(
         "passwordReset",
-        `${field("New password", "password", "", "password", 'required minlength="12" maxlength="128"')}<button type="submit" class="primary">Reset password</button>`,
+        `${passwordField("New password", "password", 'required minlength="12" maxlength="128" autocomplete="new-password"')}<button type="submit" class="primary">Reset password</button>`,
         async (f) => {
           const result = await client.mutate("/api/auth/reset", {
             token,
@@ -2731,7 +2777,32 @@ async function boot() {
   ) {
     await authPage();
     await handleLink();
-  } else await go("home");
+  } else if (!(await resumeRememberedSession())) await go("home");
+}
+// Reopens the workspace saved with "Keep me signed in", so a returning student skips the
+// sign-in form. Returns false when there is nothing to resume.
+async function resumeRememberedSession() {
+  const resumed = await resumeSession().catch(() => null);
+  if (!resumed?.data.user || !resumed.data.token) return false;
+  vault = resumed;
+  user = vault.data.user;
+  client = new Client(vault);
+  applyTheme(vault.data.theme);
+  companionState();
+  await go(user.course ? "home" : "onboarding");
+  client.sync().catch(() => {});
+  return true;
+}
+// The server session lasts 7 days. When it has expired, keep the encrypted workspace and its
+// queued work, forget the remembered sign-in and ask for the password again.
+async function sessionExpired() {
+  await forgetSession().catch(() => {});
+  if (vault) await vault.save();
+  user = null;
+  vault = null;
+  client = new Client();
+  await authPage();
+  toast("Your sign-in expired. Enter your password to continue — your saved work is kept.");
 }
 setInterval(() => {
   if (vault && !document.hidden) {

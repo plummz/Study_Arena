@@ -111,9 +111,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not OS.has_feature("mobile"):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-func add_touch_look(delta_pixels: Vector2) -> void:
+## Turn from a touch drag measured in screen-heights (1.0 = a swipe the full short side).
+## At the default speed that swipe turns about 75°.
+var touch_sensitivity := 1.0
+func add_touch_look(delta_screens: Vector2) -> void:
 	if controls_enabled:
-		_apply_look(delta_pixels * mouse_sensitivity * 1.6)
+		_apply_look(delta_screens * 1.3 * touch_sensitivity)
 
 func _apply_look(amount: Vector2) -> void:
 	yaw -= amount.x

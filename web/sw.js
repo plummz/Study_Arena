@@ -1,4 +1,4 @@
-const VERSION = "study-arena-shell-v13-endpoint-routing";
+const VERSION = "study-arena-shell-v14-mobile-signin";
 const SHELL = [
   "./", "./index.html", "./style.css", "./tokens.css", "./app.js",
   "./studio.js", "./import.js", "./vault.js", "./api.js", "./config.js",

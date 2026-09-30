@@ -134,19 +134,15 @@ try {
   await page.locator(".quiz-feedback").waitFor();
   results.push("E2E04 Solo answer and explanation work without network");
   await page.reload();
-  await page.getByRole("heading", { name: /A little progress/ }).waitFor();
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.getByLabel("Email", { exact: true }).fill("student@study.test");
-  await page
-    .getByLabel("Password / local workspace password")
-    .fill("StudyArena!2026");
-  await page.getByRole("button", { name: "Enter my study space" }).click();
+  // "Keep me signed in" (on by default) reopens the encrypted workspace without the password,
+  // even offline.
   await page
     .getByRole("button", { name: "AI Study Studio", exact: true })
     .waitFor();
   await page.getByRole("heading", { name: /A little progress/ }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Sign in", exact: true }).count(), 0);
   results.push(
-    "E2E05 Service-worker offline reload and encrypted workspace unlock",
+    "E2E05 Offline reload through the service worker resumes the remembered encrypted workspace without re-entering the password",
   );
   await context.setOffline(false);
   await page
@@ -203,7 +199,8 @@ try {
   results.push("E2E09 Dark mode saved in the encrypted workspace");
 
   // Exercise the final contributor form changes through real UI submissions.
-  const teacherContext = context;
+  // A separate browser profile, so the student's remembered sign-in is not resumed here.
+  const teacherContext = await browser.newContext({ viewport: { width: 1440, height: 1040 } });
   const teacherPage = await teacherContext.newPage();
   teacherPage.on("pageerror", e => errors.push(e.message));
   await teacherPage.goto(app.url);
@@ -344,6 +341,14 @@ try {
   await phonePage.getByRole("button", { name: "Sign in", exact: true }).click();
   const authCard = phonePage.locator(".auth");
   await authCard.waitFor();
+  const password = phonePage.getByLabel("Password / local workspace password");
+  await password.fill("Synthetic-secret-1");
+  await phonePage.getByRole("button", { name: "Show password" }).click();
+  assert.equal(await password.getAttribute("type"), "text");
+  await phonePage.getByRole("button", { name: "Hide password" }).click();
+  assert.equal(await password.getAttribute("type"), "password");
+  assert.equal(await phonePage.getByLabel("Keep me signed in on this device").isChecked(), true);
+  results.push("E2E22 Password Show/Hide toggle works; “Keep me signed in” is offered and on by default");
   const cardBox = await authCard.boundingBox();
   assert.ok(Math.abs(cardBox.x - (375 - cardBox.x - cardBox.width)) <= 1, "login card is horizontally centred");
   assert.ok(await phonePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
@@ -370,6 +375,8 @@ try {
     sidebar: getComputedStyle(document.querySelector(".sidebar")).display,
   }));
   assert.deepEqual(landscape, { width: 932, nav: "flex", sidebar: "none" });
+  const navButton = await widePage.locator(".bottom-nav button").first().boundingBox();
+  assert.ok(navButton.height >= 56, `bottom-nav buttons are at least 56px tall (${navButton.height})`);
   results.push("E2E21 932px landscape phone uses the mobile bottom navigation");
   await wide.close();
   await teacherPage.close();

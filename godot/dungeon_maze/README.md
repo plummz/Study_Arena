@@ -12,7 +12,10 @@ Start it locally from the repository root with `Start-Dungeon-Maze.cmd`.
 - Walk up to a skeleton or scholar to open its question; 1–4 answer, H hint, Enter continue
 
 On phones and tablets, rotate to landscape: the left stick moves, dragging the right
-half looks around, and RUN (toggle), JUMP, MAP and pause buttons sit on the right.
+half looks around, RUN (toggle) and JUMP sit bottom-right, and pause (II) and MAP sit
+upper-left. Controls are sized from the screen's short side, and the whole interface is
+enlarged 30% on touch screens. Pause → Settings has **Touch look speed** and **Touch
+control size** (saved on the device). `-- --touch-preview` shows the controls on a desktop.
 
 GitHub Pages must use **GitHub Actions** as its publishing source; the legacy
 "Deploy from a branch" source omits the generated WebAssembly dungeon.

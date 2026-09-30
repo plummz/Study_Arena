@@ -8,9 +8,11 @@ const runtimeOrigin = String(
 const browserLocation = globalThis.location;
 export const IS_GITHUB_PAGES =
   Boolean(browserLocation) && browserLocation.hostname.endsWith("github.io");
-const IS_NATIVE = Boolean(
+export const IS_NATIVE = Boolean(
   globalThis.window?.Capacitor?.isNativePlatform?.(),
 );
+// The published WebAssembly dungeon, opened from the Android app (which has no local game server).
+export const DUNGEON_WEB_URL = "https://plummz.github.io/Study_Arena/dungeon/index.html";
 const IS_LOCAL_SERVER =
   Boolean(browserLocation) &&
   ["localhost", "127.0.0.1", "::1"].includes(browserLocation.hostname) &&
