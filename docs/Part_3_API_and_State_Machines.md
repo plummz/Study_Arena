@@ -4,7 +4,7 @@
 
 The route table below is generated from the same registry that serves requests. JSON bodies only; UTF-8; API prefix `/api`. Timestamps are UTC Unix seconds, not milliseconds. UUIDs are preferred for client activity IDs; seeded content has readable IDs. All successful mutations return HTTP 200, including safe replays. No operation returns an invented success while waiting for an external payout.
 
-`public` accepts an optional bearer token to include the caller's accessible content. `student` means any authenticated, non-suspended user, acting on their own resources. `moderator` means teacher or administrator; cohort and object checks still apply. `admin` means administrator only. Role checks never replace object authorization.
+`public` accepts an optional bearer token to include the caller's accessible content. `student` means any authenticated, non-suspended user, acting on their own resources. `dungeon` means a valid run-scoped `X-Dungeon-Ticket` (the owner session is also accepted for the question list). `moderator` means teacher or administrator; cohort and object checks still apply. `admin` means administrator only. Role checks never replace object authorization.
 
 Every row with **key required** needs `Idempotency-Key: <16–100 alphanumeric, underscore or hyphen characters>`. Generate one UUID before the first attempt, persist it, and reuse it on retry. Do not create a new key after an uncertain timeout. The key is scoped to the account and bound to method, path and body. Recent authentication means a successful login within the last 10 minutes; no password is asked from a room peer.
 
@@ -95,6 +95,12 @@ Pagination defaults to 30, maximum 100, with nonnegative `offset`. A saved deck 
 | `POST /api/admin/claims/{id}` | admin; key required | `{action:'approve'\|'deny'\|'fulfill',reason,eligibility_ref?,receipt?}` | `{claim}` | INVALID_STATE,ELIGIBILITY_REQUIRED,SELF_APPROVAL |
 | `POST /api/admin/ledger` | admin; key required | `{user_id,xp,coins,reason,origin}` | `{wallet}` | NEGATIVE_BALANCE |
 | `POST /api/push/register` | student; key required | `{token,platform:android}` | `{ok}` | VALIDATION |
+| `POST /api/dungeon/launch` | public; no key required | `{companion:moss\|lumi\|coral\|sky\|plum\|sunny\|mint\|nova\|ember\|bubbles\|byte\|clover\|mochi\|comet\|pebble\|melody\|taro\|sol,difficulty:easy\|average\|hard\|hell,run_id?,ticket?}` | `{launched,already_running,companion,difficulty}` | VALIDATION,DUNGEON_UNAVAILABLE,DUNGEON_LAUNCH_FAILED |
+| `POST /api/dungeon/runs` | student; no key required | `{difficulty:easy\|average\|hard\|hell,companion}` | `{run_id,ticket,expires_at,difficulty,question_count,hint_cost,time_limit_seconds,mistake_limit,source}` | VALIDATION,FEATURE_DISABLED |
+| `GET /api/dungeon/runs/{run_id}/questions` | dungeon; no key required | `-` | `{run_id,questions:[{index,prompt,options,subject,source}],state}` | RUN_NOT_FOUND,TICKET_INVALID |
+| `POST /api/dungeon/runs/{run_id}/answer` | dungeon; no key required | `{index,choice}` | `{index,correct,correct_choice,explanation,coins_awarded,mercy_token,cap_reached,flagged_fast,state}` | VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,RATE_LIMITED |
+| `POST /api/dungeon/runs/{run_id}/hint` | dungeon; no key required | `{index}` | `{index,removed_choices,coins_spent,wallet_balance}` | VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,INSUFFICIENT_COINS,RATE_LIMITED |
+| `POST /api/dungeon/runs/{run_id}/finish` | dungeon; no key required | `{outcome:victory\|lost\|abandoned\|timeout}` | `{run_id,outcome,answered,correct_count,coins_awarded,duration_seconds}` | VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED |
 | `GET /api/health` | public; no key required | `—` | `{status,demo,server_time}` | — |
 | `GET /api/config` | public; no key required | `—` | `{flags,earning_rules,support,api_origin}` | — |
 | `GET /api/contracts` | public; no key required | `—` | `{endpoints:[EndpointContract]}` | — |
@@ -108,6 +114,7 @@ Every error is `{ "error": { "code": "CODE", "message": "Human-readable reason",
 | `ACTIVE_ROOM` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `ACTIVE_SESSION` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `AGE_RESTRICTED` | 403 | Correct the input or show the domain message; do not blindly retry. |
+| `AI_NOT_CONFIGURED` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `ALREADY_CLAIMED` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `ALREADY_PROTECTED` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `AUTH_REQUIRED` | 401 | Sign in again; retain the encrypted local workspace and queue. |
@@ -121,6 +128,8 @@ Every error is `{ "error": { "code": "CODE", "message": "Human-readable reason",
 | `CONTENT_TYPE` | 415 | Correct the input or show the domain message; do not blindly retry. |
 | `COOLDOWN` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `DEADLINE_EXPIRED` | 409 | Correct the input or show the domain message; do not blindly retry. |
+| `DUNGEON_LAUNCH_FAILED` | 500 | Correct the input or show the domain message; do not blindly retry. |
+| `DUNGEON_UNAVAILABLE` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `DUPLICATE_CARD` | 422 | Correct the input or show the domain message; do not blindly retry. |
 | `ELIGIBILITY_REQUIRED` | 403 | Correct the input or show the domain message; do not blindly retry. |
 | `EMAIL_UNVERIFIED` | 403 | Correct the input or show the domain message; do not blindly retry. |
@@ -131,6 +140,7 @@ Every error is `{ "error": { "code": "CODE", "message": "Human-readable reason",
 | `FORBIDDEN` | 403 | Correct the input or show the domain message; do not blindly retry. |
 | `IDEMPOTENCY_CONFLICT` | 409 | Investigate key reuse; do not silently change keys for an uncertain committed operation. |
 | `IDEMPOTENCY_REQUIRED` | 400 | Correct the input or show the domain message; do not blindly retry. |
+| `INSUFFICIENT_COINS` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `INSUFFICIENT_FUNDS` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `INTERNAL_ERROR` | 500 | Keep work and retry with the same key; give support the request ID. |
 | `INVALID_CREDENTIALS` | 401 | Sign in again; retain the encrypted local workspace and queue. |
@@ -154,11 +164,17 @@ Every error is `{ "error": { "code": "CODE", "message": "Human-readable reason",
 | `REGISTRATION_UNAVAILABLE` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `ROOM_FULL` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `RULES_CHANGED` | 409 | Correct the input or show the domain message; do not blindly retry. |
+| `RUN_CLOSED` | 409 | Correct the input or show the domain message; do not blindly retry. |
+| `RUN_NOT_FOUND` | 404 | Correct the input or show the domain message; do not blindly retry. |
 | `SELF_ACTION` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `SELF_APPROVAL` | 403 | Correct the input or show the domain message; do not blindly retry. |
 | `SKILL_BAND_MISMATCH` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `SMTP_CONFIGURATION` | 500 | Correct the input or show the domain message; do not blindly retry. |
+| `TICKET_INVALID` | 401 | Correct the input or show the domain message; do not blindly retry. |
 | `TOKEN_INVALID` | 400 | Correct the input or show the domain message; do not blindly retry. |
+| `UNSUPPORTED_AI_FILE` | 422 | Correct the input or show the domain message; do not blindly retry. |
+| `UPLOAD_COMPLETE` | 409 | Correct the input or show the domain message; do not blindly retry. |
+| `UPLOAD_INCOMPLETE` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `UPLOAD_OFFSET` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `VALIDATION` | 422 | Correct the input or show the domain message; do not blindly retry. |
 | `VERSION_CONFLICT` | 409 | Keep the local version, show conflict, reload current content or preserve a conflict copy. |
@@ -169,6 +185,7 @@ Every error is `{ "error": { "code": "CODE", "message": "Human-readable reason",
 - `StudySession`: never returns `notes_cipher`. The owner's history/export includes decrypted `notes`; write responses return the timing/credit state. Other users and teacher analytics cannot access this record.
 - `Deck`: deck metadata plus optional `card_count`; detail includes paginated cards and due schedule values for the requester. Public listing includes approved public decks and the owner's own decks.
 - `Question`: `options` and `accepted` are arrays, not JSON strings. Solo quiz packages intentionally include accepted answers and explanations. Active duel projection strips both.
+- `DungeonRun`: tickets are returned only when creating a run; the database stores only a SHA-256 ticket hash. Run questions expose prompts, options, subject and source before grading. The correct choice and explanation remain server-side until the answer response.
 - `Attempt`: metadata plus the immutable question snapshot rendered as `questions` and the user's `answers`; raw `snapshot` TEXT is not duplicated in the response.
 - `Material`: metadata and permitted body or verified binary chunks. List responses exclude full text bodies. Content entitlements are checked before material access.
 - `Room`: no invitation hash is exposed. Creation/rotation returns the new plaintext code once. Roster contains display name, private-room band and join time; not email or school ID.
@@ -200,6 +217,25 @@ stateDiagram-v2
 A connected session has server heartbeat evidence; heartbeat deltas cap at 120 seconds. The mobile web timer is local-first and submits one immutable completion. An offline log with less than five minutes or an overlap is `uncredited`. Invalid clock evidence is rejected for review and retained locally. Credited duration cannot exceed 180 minutes. The client pauses after four wall-clock hours or a large/negative clock jump. Notes survive interruptions and remain private.
 
 A completion retry returns its previous result. A second device cannot run a second credited connected session. Offline overlap resolution uses first server acceptance; no app can prove simultaneous offline activity without a trusted witness.
+
+## Dungeon run state machine
+
+```mermaid
+stateDiagram-v2
+ [*] --> Active: create with session
+ Active --> Won: 100 correct answers and finish
+ Active --> Lost: mistake allowance exhausted or finish lost
+ Active --> Abandoned: finish abandoned or new run created
+ Active --> Expired: ticket expires or time limit exceeded
+ Won --> [*]
+ Lost --> [*]
+ Abandoned --> [*]
+ Expired --> [*]
+```
+
+The server creates one active run per student with competition enabled and fixes its 100-question order, answer choices, difficulty limits and reward rules. Published, explained quiz questions the student may see are preferred, with server-generated arithmetic practice filling any shortfall. Two-choice true/false questions are padded to four options so a hint can remove two wrong choices. Creation closes an older active run as `abandoned`. An authorized session creates the run; the resulting six-hour ticket is scoped to its owner and sent in `X-Dungeon-Ticket` for gameplay requests. The owner session can also retrieve the question list. A guest, offline player or student with competition off plays a practice run without a server ticket or saved coins.
+
+Answers are graded once per question index. Replays return the stored result and do not write another ledger entry. A correct answer credits at most one dungeon coin, subject to a 100-coin rolling 24-hour cap; answers submitted less than 1.5 seconds after the question was served or the previous answer are graded with zero coins and `flagged_fast`. Hints debit the wallet through the ledger once per index and remove two wrong choices. A 5% server-side mercy event adds one mistake allowance. Victory requires all 100 answers correct; a premature victory request is downgraded. Premature lost and timeout requests become abandoned. The server validates run closure and rejects further mutations on a closed run.
 
 ## Duel state machine
 

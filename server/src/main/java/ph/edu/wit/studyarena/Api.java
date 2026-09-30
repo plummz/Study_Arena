@@ -165,7 +165,7 @@ final class Api {
       }
       if (x.getRequestMethod().equals("OPTIONS")) {
         x.getResponseHeaders()
-            .set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key");
+            .set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, X-Dungeon-Ticket");
         x.getResponseHeaders()
             .set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         send(x, 204, null);
@@ -209,6 +209,12 @@ final class Api {
         String ip = x.getRemoteAddress().getAddress().getHostAddress();
         db.rate("http:" + ip, 600, 60);
         if (path.startsWith("/api/auth/")) db.rate("auth:" + ip, 40, 60);
+        if (path.startsWith("/api/dungeon/")) db.exec(
+            "UPDATE dungeon_runs SET state='expired',ended=? WHERE state='active' AND (ticket_expires<=? OR started+time_limit_seconds<=?)",
+            now(), now(), now());
+        if (path.startsWith("/api/dungeon/")) db.exec(
+            "UPDATE dungeon_runs SET state='abandoned',ended=? WHERE state='active' AND (user_id IN (SELECT id FROM users WHERE competition=0) OR (SELECT enabled FROM flags WHERE name='competition')=0)",
+            now());
         authenticate(r);
         db.c.setAutoCommit(false);
         try {
@@ -284,6 +290,21 @@ final class Api {
                   + " AND s.expires>? AND u.delete_after IS NULL AND u.suspended=0",
               hash(r.token),
               now());
+    }
+    if (r.route.auth().equals("dungeon")) {
+      String ticket = r.x.getRequestHeaders().getFirst("X-Dungeon-Ticket");
+      if (ticket != null) {
+        require(ticket.matches("[A-Za-z0-9_-]{43}"), 401, "TICKET_INVALID", "Invalid dungeon ticket.");
+        Map<String, Object> owner = db.one(
+            "SELECT u.* FROM dungeon_runs d JOIN users u ON u.id=d.user_id WHERE d.id=? AND d.ticket_hash=? AND d.ticket_expires>? AND u.delete_after IS NULL AND u.suspended=0",
+            r.p(), hash(ticket), now());
+        require(owner != null && (r.user == null || r.uid().equals(str(owner, "id"))),
+            401, "TICKET_INVALID", "Invalid dungeon ticket.");
+        r.user = owner;
+        return;
+      }
+      require(r.route.method().equals("GET") && r.user != null,
+          401, "TICKET_INVALID", "A dungeon ticket is required.");
     }
     if (!r.route.auth().equals("public")) {
       require(

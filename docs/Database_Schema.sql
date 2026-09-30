@@ -142,6 +142,27 @@ CREATE TABLE IF NOT EXISTS ledger (
  UNIQUE(user_id,origin)
 );
 CREATE INDEX IF NOT EXISTS ix_ledger_user ON ledger(user_id,created);
+CREATE TABLE IF NOT EXISTS dungeon_runs (
+ id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ ticket_hash TEXT NOT NULL UNIQUE, ticket_expires REAL NOT NULL,
+ difficulty TEXT NOT NULL CHECK(difficulty IN ('easy','average','hard','hell')), companion TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('active','won','lost','abandoned','expired')),
+ started REAL NOT NULL, ended REAL, time_limit_seconds INTEGER NOT NULL,
+ mistake_limit INTEGER NOT NULL, hint_cost INTEGER NOT NULL, mercy_tokens INTEGER NOT NULL DEFAULT 0,
+ mistakes_used INTEGER NOT NULL DEFAULT 0, coins_awarded INTEGER NOT NULL DEFAULT 0,
+ last_answer_at REAL, source TEXT NOT NULL CHECK(source IN ('library','mixed','practice'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_dungeon_one_active ON dungeon_runs(user_id) WHERE state='active';
+CREATE INDEX IF NOT EXISTS ix_dungeon_user_started ON dungeon_runs(user_id,started);
+CREATE TABLE IF NOT EXISTS dungeon_run_questions (
+ run_id TEXT NOT NULL REFERENCES dungeon_runs(id) ON DELETE CASCADE, idx INTEGER NOT NULL CHECK(idx BETWEEN 0 AND 49),
+ prompt TEXT NOT NULL, options TEXT NOT NULL, correct_choice INTEGER NOT NULL CHECK(correct_choice BETWEEN 0 AND 3),
+ explanation TEXT NOT NULL, subject TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('quiz','flashcard','practice')),
+ served_at REAL, answered_at REAL, choice INTEGER, correct INTEGER, coins_awarded INTEGER NOT NULL DEFAULT 0,
+ flagged_fast INTEGER NOT NULL DEFAULT 0, mercy_token INTEGER NOT NULL DEFAULT 0, hint_removed TEXT,
+ answer_response TEXT, hint_response TEXT,
+ PRIMARY KEY(run_id,idx)
+);
 CREATE TRIGGER IF NOT EXISTS immutable_ledger_update BEFORE UPDATE OF xp,coins,origin,reason,created ON ledger BEGIN SELECT RAISE(ABORT,'immutable ledger'); END;
 CREATE TRIGGER IF NOT EXISTS immutable_ledger_delete BEFORE DELETE ON ledger BEGIN SELECT RAISE(ABORT,'immutable ledger'); END;
 CREATE TABLE IF NOT EXISTS catalog (
@@ -169,6 +190,27 @@ CREATE TABLE IF NOT EXISTS streak_days (
  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, day TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('study','grace','freeze')),
  created REAL NOT NULL, PRIMARY KEY(user_id,day)
 );
+CREATE TABLE IF NOT EXISTS login_days (
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, day TEXT NOT NULL, created REAL NOT NULL,
+ PRIMARY KEY(user_id,day)
+);
+CREATE INDEX IF NOT EXISTS ix_login_days_user ON login_days(user_id,day);
+CREATE TABLE IF NOT EXISTS studio_sources (
+ id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 120), filename TEXT NOT NULL CHECK(length(filename) BETWEEN 1 AND 180),
+ mime TEXT NOT NULL CHECK(length(mime) BETWEEN 1 AND 120), bytes INTEGER NOT NULL CHECK(bytes BETWEEN 1 AND 26214400),
+ sha256 TEXT NOT NULL CHECK(length(sha256)=64), file_key TEXT, uploaded INTEGER NOT NULL DEFAULT 0 CHECK(uploaded>=0),
+ state TEXT NOT NULL DEFAULT 'uploading' CHECK(state IN ('uploading','ready','failed')), created REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_studio_source_owner ON studio_sources(owner_id,created);
+CREATE TABLE IF NOT EXISTS studio_artifacts (
+ id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ source_id TEXT NOT NULL REFERENCES studio_sources(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN ('reviewer','summary','study_plan','flashcards','quizlet','quiz','slides','transcript')),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 160), body TEXT NOT NULL,
+ ai INTEGER NOT NULL DEFAULT 0 CHECK(ai IN (0,1)), created REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_studio_artifact_owner ON studio_artifacts(owner_id,created);
 CREATE TABLE IF NOT EXISTS notification_settings (
  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, reminders INTEGER NOT NULL DEFAULT 1, streak INTEGER NOT NULL DEFAULT 1,
  invitations INTEGER NOT NULL DEFAULT 1, challenges INTEGER NOT NULL DEFAULT 0, rewards INTEGER NOT NULL DEFAULT 1,

@@ -1,16 +1,19 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { server } from "./server.mjs";
 let app, student, teacher, admin, other, minor, privateDeck, room;
 const uid = () => crypto.randomUUID();
 async function api(
   path,
-  { token, method = "GET", body, key, status = 200 } = {},
+  { token, ticket, method = "GET", body, key, status = 200 } = {},
 ) {
   const r = await fetch(app.url + path, {
     method,
     headers: {
       ...(token ? { Authorization: "Bearer " + token } : {}),
+      ...(ticket ? { "X-Dungeon-Ticket": ticket } : {}),
       ...(body
         ? {
             "Content-Type": "application/json",
@@ -62,6 +65,17 @@ async function preferences(account, competition) {
   });
   account.user = result.user;
   return result;
+}
+// The integration server uses an isolated synthetic SQLite database. These narrow fixture
+// changes make time and daily-cap boundaries deterministic without long real-time waits.
+function dungeonFixture(sql, params = []) {
+  const script = `import json, sqlite3, sys
+db = sqlite3.connect(sys.argv[1], timeout=5)
+row = db.execute(sys.argv[2], json.loads(sys.argv[3])).fetchone()
+db.commit()
+print(json.dumps(row))`;
+  const python = process.platform === "win32" ? "python" : "python3";
+  return JSON.parse(execFileSync(python, ["-c", script, path.join(app.dir, "arena.db"), sql, JSON.stringify(params)], { encoding: "utf8" }));
 }
 before(async () => {
   app = await server();
@@ -660,4 +674,210 @@ test("L01 students cannot inspect audit, flags, reports or private notes through
   assert.ok(state.audit.length > 5);
   assert.equal(state.study_sessions, undefined);
   assert.equal(state.answers, undefined);
+});
+test("DUN01 run questions stay private; a correct answer credits once and victory is validated", async () => {
+  const runner = await register("dungeon-runner");
+  await preferences(runner, true);
+  const run = await api("/api/dungeon/runs", {
+    token: runner.token, method: "POST", body: { difficulty: "easy", companion: "moss" },
+  });
+  assert.ok(/^[A-Za-z0-9_-]{43}$/.test(run.ticket), "ticket format");
+  assert.equal(run.question_count, 20);
+  assert.equal(run.time_limit_seconds, 480);
+  assert.equal(run.mistake_limit, 5);
+  assert.equal(run.hint_cost, 2);
+  assert.ok(["library", "mixed", "practice"].includes(run.source));
+  const url = `/api/dungeon/runs/${run.run_id}`;
+  const preflight = await fetch(app.url + url + "/answer", {
+    method: "OPTIONS",
+    headers: { Origin: app.url, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "X-Dungeon-Ticket, Content-Type" },
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-origin"), app.url);
+  assert.ok(preflight.headers.get("access-control-allow-headers").toLowerCase().includes("x-dungeon-ticket"));
+  const listing = await api(url + "/questions", { ticket: run.ticket });
+  assert.equal(listing.questions.length, 20);
+  assert.equal(new Set(listing.questions.map(q => q.index)).size, 20);
+  for (const q of listing.questions) {
+    assert.ok(q.options.length >= 2 && q.options.length <= 4);
+    if (q.source === "practice") assert.equal(q.options.length, 4);
+    assert.equal(q.correct_choice, undefined);
+    assert.equal(q.explanation, undefined);
+    assert.ok(["quiz", "flashcard", "practice"].includes(q.source));
+  }
+  const denied = await api(url + "/questions", { token: student.token, status: 404 });
+  assert.equal(denied.error.code, "RUN_NOT_FOUND");
+  const invalid = await api(url + "/answer", {
+    ticket: "invalid", method: "POST", body: { index: 0, choice: 0 }, status: 401,
+  });
+  assert.equal(invalid.error.code, "TICKET_INVALID");
+  const correctChoice = dungeonFixture(
+    "SELECT correct_choice FROM dungeon_run_questions WHERE run_id=? AND idx=0", [run.run_id],
+  )[0];
+  await new Promise(resolve => setTimeout(resolve, 1600));
+  const before = (await api("/api/wallet", { token: runner.token })).wallet.coins;
+  const answer = await api(url + "/answer", {
+    ticket: run.ticket, method: "POST", body: { index: 0, choice: correctChoice },
+  });
+  assert.equal(answer.correct, true);
+  assert.ok(answer.correct_choice === correctChoice, "correct answer returned");
+  assert.equal(answer.coins_awarded, 1);
+  assert.equal(answer.flagged_fast, false);
+  const repeat = await api(url + "/answer", {
+    ticket: run.ticket, method: "POST", body: { index: 0, choice: correctChoice },
+  });
+  assert.ok(JSON.stringify(repeat) === JSON.stringify(answer), "answer replay is identical");
+  const wallet = await api("/api/wallet", { token: runner.token });
+  assert.equal(wallet.wallet.coins, before + 1);
+  assert.equal(wallet.ledger.filter(entry => entry.reason === "dungeon_answer").length, 1);
+  const finish = await api(url + "/finish", {
+    ticket: run.ticket, method: "POST", body: { outcome: "victory" },
+  });
+  assert.notEqual(finish.outcome, "victory");
+  assert.equal(finish.answered, 1);
+  assert.equal(finish.correct_count, 1);
+});
+test("DUN02 fast answers earn no coins; hints charge once and reject an empty wallet", async () => {
+  const runner = await register("dungeon-hints");
+  const practiceOnly = await api("/api/dungeon/runs", {
+    token: runner.token, method: "POST", body: { difficulty: "average", companion: "lumi" }, status: 403,
+  });
+  assert.equal(practiceOnly.error.code, "FEATURE_DISABLED");
+  await preferences(runner, true);
+  const run = await api("/api/dungeon/runs", {
+    token: runner.token, method: "POST", body: { difficulty: "average", companion: "lumi" },
+  });
+  const url = `/api/dungeon/runs/${run.run_id}`;
+  const listing = await api(url + "/questions", { ticket: run.ticket });
+  // True/false questions keep two options, so hint on one with at least three choices.
+  const hintIndex = listing.questions.find(q => q.options.length >= 3).index;
+  const poor = await api(url + "/hint", {
+    ticket: run.ticket, method: "POST", body: { index: hintIndex }, status: 409,
+  });
+  assert.equal(poor.error.code, "INSUFFICIENT_COINS");
+  await api("/api/admin/ledger", {
+    token: admin.token, method: "POST",
+    body: { user_id: runner.user.id, xp: 0, coins: 10, origin: uid(), reason: "Synthetic hint test funding" },
+  });
+  const first = await api(url + "/hint", {
+    ticket: run.ticket, method: "POST", body: { index: hintIndex },
+  });
+  assert.equal(first.coins_spent, run.hint_cost);
+  assert.equal(first.wallet_balance, 10 - run.hint_cost);
+  assert.equal(first.removed_choices.length, 2);
+  assert.equal(new Set(first.removed_choices).size, 2);
+  const repeat = await api(url + "/hint", {
+    ticket: run.ticket, method: "POST", body: { index: hintIndex },
+  });
+  assert.ok(JSON.stringify(repeat) === JSON.stringify(first), "hint replay is identical");
+  assert.equal((await api("/api/wallet", { token: runner.token })).wallet.coins, 10 - run.hint_cost);
+  const choice = dungeonFixture(
+    "SELECT correct_choice FROM dungeon_run_questions WHERE run_id=? AND idx=0", [run.run_id],
+  )[0];
+  await new Promise(resolve => setTimeout(resolve, 1100));
+  dungeonFixture("UPDATE dungeon_run_questions SET served_at=? WHERE run_id=? AND idx=0", [Date.now() / 1000, run.run_id]);
+  const answer = await api(url + "/answer", {
+    ticket: run.ticket, method: "POST", body: { index: 0, choice },
+  });
+  assert.equal(answer.correct, true);
+  assert.equal(answer.flagged_fast, true);
+  assert.equal(answer.coins_awarded, 0);
+});
+test("DUN03 daily dungeon cap and ticket expiry are enforced", async () => {
+  const runner = await register("dungeon-limits");
+  await preferences(runner, true);
+  const run = await api("/api/dungeon/runs", {
+    token: runner.token, method: "POST", body: { difficulty: "hard", companion: "coral" },
+  });
+  assert.equal(run.question_count, 40);
+  const url = `/api/dungeon/runs/${run.run_id}`;
+  await api(url + "/questions", { ticket: run.ticket });
+  dungeonFixture(
+    "INSERT INTO ledger(id,user_id,xp,coins,origin,reason,created,actor_id) VALUES(?,?,0,100,?,'dungeon_answer',?,NULL)",
+    [uid(), runner.user.id, "dungeon_answer:fixture:" + uid(), Date.now() / 1000],
+  );
+  const choice = dungeonFixture(
+    "SELECT correct_choice FROM dungeon_run_questions WHERE run_id=? AND idx=0", [run.run_id],
+  )[0];
+  await new Promise(resolve => setTimeout(resolve, 1600));
+  const answer = await api(url + "/answer", {
+    ticket: run.ticket, method: "POST", body: { index: 0, choice },
+  });
+  assert.equal(answer.correct, true);
+  assert.equal(answer.cap_reached, true);
+  assert.equal(answer.coins_awarded, 0);
+  dungeonFixture("UPDATE dungeon_runs SET ticket_expires=? WHERE id=?", [Date.now() / 1000 - 1, run.run_id]);
+  const expired = await api(url + "/answer", {
+    ticket: run.ticket, method: "POST", body: { index: 1, choice: 0 }, status: 401,
+  });
+  assert.equal(expired.error.code, "TICKET_INVALID");
+});
+
+test("DUN04 a complete correct run can finish in victory", async () => {
+  const runner = await register("dungeon-victory");
+  await preferences(runner, true);
+  const run = await api("/api/dungeon/runs", {
+    token: runner.token, method: "POST", body: { difficulty: "easy", companion: "moss" },
+  });
+  const url = `/api/dungeon/runs/${run.run_id}`;
+  dungeonFixture(
+    "UPDATE dungeon_run_questions SET answered_at=?,choice=correct_choice,correct=1 WHERE run_id=?",
+    [Date.now() / 1000, run.run_id],
+  );
+  const finish = await api(url + "/finish", {
+    ticket: run.ticket, method: "POST", body: { outcome: "victory" },
+  });
+  assert.equal(finish.outcome, "victory");
+  assert.equal(finish.answered, 20);
+  assert.equal(finish.correct_count, 20);
+});
+
+test("DUN05 a run with a few wrong answers can still win, and timeout is recorded", async () => {
+  const runner = await register("dungeon-imperfect");
+  await preferences(runner, true);
+  const run = await api("/api/dungeon/runs", {
+    token: runner.token, method: "POST", body: { difficulty: "easy", companion: "sky" },
+  });
+  const url = `/api/dungeon/runs/${run.run_id}`;
+  // Questions are single-attempt: 17 correct and 3 wrong (under the easy limit of 5) still resolve all 20.
+  dungeonFixture(
+    "UPDATE dungeon_run_questions SET answered_at=?,choice=correct_choice,correct=(CASE WHEN idx < 3 THEN 0 ELSE 1 END) WHERE run_id=?",
+    [Date.now() / 1000, run.run_id],
+  );
+  dungeonFixture("UPDATE dungeon_runs SET mistakes_used=3 WHERE id=?", [run.run_id]);
+  const finish = await api(url + "/finish", {
+    ticket: run.ticket, method: "POST", body: { outcome: "victory" },
+  });
+  assert.equal(finish.outcome, "victory");
+  assert.equal(finish.correct_count, 17);
+  const second = await api("/api/dungeon/runs", {
+    token: runner.token, method: "POST", body: { difficulty: "easy", companion: "sky" },
+  });
+  const timeout = await api(`/api/dungeon/runs/${second.run_id}/finish`, {
+    ticket: second.ticket, method: "POST", body: { outcome: "timeout" },
+  });
+  assert.equal(timeout.outcome, "timeout");
+});
+
+test("DUN06 a student's own flashcards become 4-choice dungeon questions without leaking answers", async () => {
+  const runner = await register("dungeon-cards");
+  await preferences(runner, true);
+  const cards = ["mitochondrion", "ribosome", "nucleus", "vacuole", "chloroplast"].map((back, i) => ({
+    front: `Synthetic organelle card ${i}`, back,
+  }));
+  await api("/api/decks", { token: runner.token, method: "POST", body: { title: "Synthetic cell deck", topic_id: "algebra", cards } });
+  const run = await api("/api/dungeon/runs", { token: runner.token, method: "POST", body: { difficulty: "easy", companion: "mint" } });
+  const listing = await api(`/api/dungeon/runs/${run.run_id}/questions`, { ticket: run.ticket });
+  const fromCards = listing.questions.filter(q => q.source === "flashcard");
+  assert.equal(fromCards.length, 5);
+  for (const q of fromCards) {
+    assert.equal(q.options.length, 4);
+    assert.equal(new Set(q.options).size, 4);
+    assert.equal(q.correct_choice, undefined);
+  }
+  const outsider = await register("dungeon-cards-outsider");
+  await preferences(outsider, true);
+  const other = await api("/api/dungeon/runs", { token: outsider.token, method: "POST", body: { difficulty: "easy", companion: "mint" } });
+  const otherListing = await api(`/api/dungeon/runs/${other.run_id}/questions`, { ticket: other.ticket });
+  assert.equal(otherListing.questions.filter(q => q.prompt.startsWith("Synthetic organelle card")).length, 0);
 });

@@ -2,8 +2,8 @@
 from pathlib import Path
 import sqlite3,json,re
 root=Path(__file__).resolve().parents[1]
-sql=(root/'server/src/main/resources/schema.sql').read_text()
-(root/'docs/Database_Schema.sql').write_text(sql)
+sql=(root/'server/src/main/resources/schema.sql').read_text(encoding='utf-8')
+(root/'docs/Database_Schema.sql').write_text(sql,encoding='utf-8')
 db=sqlite3.connect(':memory:');db.executescript(sql)
 lines=['# Study Arena — Complete database dictionary','', 'Generated from `Database_Schema.sql`. SQLite `REAL` timestamps are UTC Unix seconds; BOOLEAN flags use INTEGER 0/1. JSON arrays/objects use TEXT and are validated by Java. Primary keys, compound uniqueness, CHECK clauses and triggers are authoritative in the SQL appendix. `NULL` means not recorded or not applicable, not zero.','']
 tables=db.execute("select name,sql from sqlite_master where type='table' and name not like 'sqlite_%' order by name").fetchall()
@@ -22,15 +22,15 @@ for table,ddl in tables:
    definition=db.execute('select sql from sqlite_master where name=?',(r[1],)).fetchone()
    lines.append(f'- `{r[1]}` ({names}); {"UNIQUE" if r[2] else "non-unique"}; '+(f'`{definition[0]}`' if definition and definition[0] else 'automatic primary/unique constraint.'))
  lines += ['','Complete table constraints:','','```sql',ddl+';','```','']
-(root/'docs/Database_Dictionary.md').write_text('\n'.join(lines))
-contracts=json.loads((root/'docs/api-contract.json').read_text())['endpoints']
+(root/'docs/Database_Dictionary.md').write_text('\n'.join(lines),encoding='utf-8')
+contracts=json.loads((root/'docs/api-contract.json').read_text(encoding='utf-8'))['endpoints']
 head='''# Study Arena — Part 3: API and state machines
 
 ## API conventions
 
 The route table below is generated from the same registry that serves requests. JSON bodies only; UTF-8; API prefix `/api`. Timestamps are UTC Unix seconds, not milliseconds. UUIDs are preferred for client activity IDs; seeded content has readable IDs. All successful mutations return HTTP 200, including safe replays. No operation returns an invented success while waiting for an external payout.
 
-`public` accepts an optional bearer token to include the caller's accessible content. `student` means any authenticated, non-suspended user, acting on their own resources. `moderator` means teacher or administrator; cohort and object checks still apply. `admin` means administrator only. Role checks never replace object authorization.
+`public` accepts an optional bearer token to include the caller's accessible content. `student` means any authenticated, non-suspended user, acting on their own resources. `dungeon` means a valid run-scoped `X-Dungeon-Ticket` (the owner session is also accepted for the question list). `moderator` means teacher or administrator; cohort and object checks still apply. `admin` means administrator only. Role checks never replace object authorization.
 
 Every row with **key required** needs `Idempotency-Key: <16–100 alphanumeric, underscore or hyphen characters>`. Generate one UUID before the first attempt, persist it, and reuse it on retry. Do not create a new key after an uncertain timeout. The key is scoped to the account and bound to method, path and body. Recent authentication means a successful login within the last 10 minutes; no password is asked from a room peer.
 
@@ -52,7 +52,7 @@ lines += ['','### Error envelope and common errors','','Every error is `{ "error
 # Include every literal domain error emitted anywhere, not only declared endpoint summaries.
 errors={}
 for path in (root/'server/src/main/java').rglob('*.java'):
- for match in re.finditer(r'(?:require\([^;]*?|new Fault\()\s*(400|401|403|404|405|409|413|415|422|429|500|503)\s*,\s*"([A-Z_]+)"',path.read_text()):errors.setdefault(match[2],set()).add(int(match[1]))
+ for match in re.finditer(r'(?:require\([^;]*?|new Fault\()\s*(400|401|403|404|405|409|413|415|422|429|500|503)\s*,\s*"([A-Z_]+)"',path.read_text(encoding='utf-8')):errors.setdefault(match[2],set()).add(int(match[1]))
 for code,status in [('INTERNAL_ERROR',500),('IDEMPOTENCY_REQUIRED',400),('IDEMPOTENCY_CONFLICT',409),('AUTH_REQUIRED',401),('CONTENT_TYPE',415),('ORIGIN_DENIED',403),('BODY_TOO_LARGE',413),('RATE_LIMITED',429),('FORBIDDEN',403),('NOT_FOUND',404),('VALIDATION',422)]:errors.setdefault(code,set()).add(status)
 lines += ['| Error code | HTTP status | Client behavior |','|---|---|---|']
 for code,status in sorted(errors.items()):
@@ -70,6 +70,7 @@ lines += ['''
 - `StudySession`: never returns `notes_cipher`. The owner's history/export includes decrypted `notes`; write responses return the timing/credit state. Other users and teacher analytics cannot access this record.
 - `Deck`: deck metadata plus optional `card_count`; detail includes paginated cards and due schedule values for the requester. Public listing includes approved public decks and the owner's own decks.
 - `Question`: `options` and `accepted` are arrays, not JSON strings. Solo quiz packages intentionally include accepted answers and explanations. Active duel projection strips both.
+- `DungeonRun`: tickets are returned only when creating a run; the database stores only a SHA-256 ticket hash. Run questions expose prompts, options, subject and source before grading. The correct choice and explanation remain server-side until the answer response.
 - `Attempt`: metadata plus the immutable question snapshot rendered as `questions` and the user's `answers`; raw `snapshot` TEXT is not duplicated in the response.
 - `Material`: metadata and permitted body or verified binary chunks. List responses exclude full text bodies. Content entitlements are checked before material access.
 - `Room`: no invitation hash is exposed. Creation/rotation returns the new plaintext code once. Roster contains display name, private-room band and join time; not email or school ID.
@@ -101,6 +102,25 @@ stateDiagram-v2
 A connected session has server heartbeat evidence; heartbeat deltas cap at 120 seconds. The mobile web timer is local-first and submits one immutable completion. An offline log with less than five minutes or an overlap is `uncredited`. Invalid clock evidence is rejected for review and retained locally. Credited duration cannot exceed 180 minutes. The client pauses after four wall-clock hours or a large/negative clock jump. Notes survive interruptions and remain private.
 
 A completion retry returns its previous result. A second device cannot run a second credited connected session. Offline overlap resolution uses first server acceptance; no app can prove simultaneous offline activity without a trusted witness.
+
+## Dungeon run state machine
+
+```mermaid
+stateDiagram-v2
+ [*] --> Active: create with session
+ Active --> Won: 100 correct answers and finish
+ Active --> Lost: mistake allowance exhausted or finish lost
+ Active --> Abandoned: finish abandoned or new run created
+ Active --> Expired: ticket expires or time limit exceeded
+ Won --> [*]
+ Lost --> [*]
+ Abandoned --> [*]
+ Expired --> [*]
+```
+
+The server creates one active run per student with competition enabled and fixes its 100-question order, answer choices, difficulty limits and reward rules. Published, explained quiz questions the student may see are preferred, with server-generated arithmetic practice filling any shortfall. Two-choice true/false questions are padded to four options so a hint can remove two wrong choices. Creation closes an older active run as `abandoned`. An authorized session creates the run; the resulting six-hour ticket is scoped to its owner and sent in `X-Dungeon-Ticket` for gameplay requests. The owner session can also retrieve the question list. A guest, offline player or student with competition off plays a practice run without a server ticket or saved coins.
+
+Answers are graded once per question index. Replays return the stored result and do not write another ledger entry. A correct answer credits at most one dungeon coin, subject to a 100-coin rolling 24-hour cap; answers submitted less than 1.5 seconds after the question was served or the previous answer are graded with zero coins and `flagged_fast`. Hints debit the wallet through the ledger once per index and remove two wrong choices. A 5% server-side mercy event adds one mistake allowance. Victory requires all 100 answers correct; a premature victory request is downgraded. Premature lost and timeout requests become abandoned. The server validates run closure and rejects further mutations on a closed run.
 
 ## Duel state machine
 
@@ -154,5 +174,5 @@ Validation and the debit/reservation are one transaction. Owning a nonconsumable
 
 A future tournament release adds `POST /tournaments`, `POST /tournaments/{id}/entries`, `POST /tournaments/{id}/start`, `GET /tournaments/{id}` and cancellation under room-owner authorization. Fields and uniqueness are in `Deferred_Extensions.sql`. Tournament entry requires consent and the same band; 2–8 participants; void rounds do not award points. A future `GET /rooms/{id}/standings?season=...` requires room membership and individual comparison opt-in and returns only chosen display names, cosmetics and seasonal points. These endpoints are specifications, not placeholder handlers.
 ''']
-(root/'docs/Part_3_API_and_State_Machines.md').write_text('\n'.join(lines))
+(root/'docs/Part_3_API_and_State_Machines.md').write_text('\n'.join(lines),encoding='utf-8')
 print(f'Documented {len(tables)} tables, {len(contracts)} registered endpoints, {len(errors)} literal error codes.')

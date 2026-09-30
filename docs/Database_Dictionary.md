@@ -537,6 +537,99 @@ CREATE TABLE duels (
 );
 ```
 
+## `dungeon_run_questions`
+
+| Column | SQLite type | Nullable | Default | Primary-key position |
+|---|---|---|---|---|
+| `run_id` | TEXT | No | `None` | 1 |
+| `idx` | INTEGER | No | `None` | 2 |
+| `prompt` | TEXT | No | `None` | — |
+| `options` | TEXT | No | `None` | — |
+| `correct_choice` | INTEGER | No | `None` | — |
+| `explanation` | TEXT | No | `None` | — |
+| `subject` | TEXT | No | `None` | — |
+| `source` | TEXT | No | `None` | — |
+| `served_at` | REAL | Yes | `None` | — |
+| `answered_at` | REAL | Yes | `None` | — |
+| `choice` | INTEGER | Yes | `None` | — |
+| `correct` | INTEGER | Yes | `None` | — |
+| `coins_awarded` | INTEGER | No | `0` | — |
+| `flagged_fast` | INTEGER | No | `0` | — |
+| `mercy_token` | INTEGER | No | `0` | — |
+| `hint_removed` | TEXT | Yes | `None` | — |
+| `answer_response` | TEXT | Yes | `None` | — |
+| `hint_response` | TEXT | Yes | `None` | — |
+
+Foreign keys:
+
+- `run_id` → `dungeon_runs.id`; delete CASCADE; update NO ACTION.
+
+Indexes and uniqueness:
+
+- `sqlite_autoindex_dungeon_run_questions_1` (run_id, idx); UNIQUE; automatic primary/unique constraint.
+
+Complete table constraints:
+
+```sql
+CREATE TABLE dungeon_run_questions (
+ run_id TEXT NOT NULL REFERENCES dungeon_runs(id) ON DELETE CASCADE, idx INTEGER NOT NULL CHECK(idx BETWEEN 0 AND 49),
+ prompt TEXT NOT NULL, options TEXT NOT NULL, correct_choice INTEGER NOT NULL CHECK(correct_choice BETWEEN 0 AND 3),
+ explanation TEXT NOT NULL, subject TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('quiz','flashcard','practice')),
+ served_at REAL, answered_at REAL, choice INTEGER, correct INTEGER, coins_awarded INTEGER NOT NULL DEFAULT 0,
+ flagged_fast INTEGER NOT NULL DEFAULT 0, mercy_token INTEGER NOT NULL DEFAULT 0, hint_removed TEXT,
+ answer_response TEXT, hint_response TEXT,
+ PRIMARY KEY(run_id,idx)
+);
+```
+
+## `dungeon_runs`
+
+| Column | SQLite type | Nullable | Default | Primary-key position |
+|---|---|---|---|---|
+| `id` | TEXT | No | `None` | 1 |
+| `user_id` | TEXT | No | `None` | — |
+| `ticket_hash` | TEXT | No | `None` | — |
+| `ticket_expires` | REAL | No | `None` | — |
+| `difficulty` | TEXT | No | `None` | — |
+| `companion` | TEXT | No | `None` | — |
+| `state` | TEXT | No | `None` | — |
+| `started` | REAL | No | `None` | — |
+| `ended` | REAL | Yes | `None` | — |
+| `time_limit_seconds` | INTEGER | No | `None` | — |
+| `mistake_limit` | INTEGER | No | `None` | — |
+| `hint_cost` | INTEGER | No | `None` | — |
+| `mercy_tokens` | INTEGER | No | `0` | — |
+| `mistakes_used` | INTEGER | No | `0` | — |
+| `coins_awarded` | INTEGER | No | `0` | — |
+| `last_answer_at` | REAL | Yes | `None` | — |
+| `source` | TEXT | No | `None` | — |
+
+Foreign keys:
+
+- `user_id` → `users.id`; delete CASCADE; update NO ACTION.
+
+Indexes and uniqueness:
+
+- `ix_dungeon_user_started` (user_id, started); non-unique; `CREATE INDEX ix_dungeon_user_started ON dungeon_runs(user_id,started)`
+- `ix_dungeon_one_active` (user_id); UNIQUE; `CREATE UNIQUE INDEX ix_dungeon_one_active ON dungeon_runs(user_id) WHERE state='active'`
+- `sqlite_autoindex_dungeon_runs_2` (ticket_hash); UNIQUE; automatic primary/unique constraint.
+- `sqlite_autoindex_dungeon_runs_1` (id); UNIQUE; automatic primary/unique constraint.
+
+Complete table constraints:
+
+```sql
+CREATE TABLE dungeon_runs (
+ id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ ticket_hash TEXT NOT NULL UNIQUE, ticket_expires REAL NOT NULL,
+ difficulty TEXT NOT NULL CHECK(difficulty IN ('easy','average','hard','hell')), companion TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('active','won','lost','abandoned','expired')),
+ started REAL NOT NULL, ended REAL, time_limit_seconds INTEGER NOT NULL,
+ mistake_limit INTEGER NOT NULL, hint_cost INTEGER NOT NULL, mercy_tokens INTEGER NOT NULL DEFAULT 0,
+ mistakes_used INTEGER NOT NULL DEFAULT 0, coins_awarded INTEGER NOT NULL DEFAULT 0,
+ last_answer_at REAL, source TEXT NOT NULL CHECK(source IN ('library','mixed','practice'))
+);
+```
+
 ## `evidence`
 
 | Column | SQLite type | Nullable | Default | Primary-key position |
@@ -672,6 +765,32 @@ CREATE TABLE ledger (
  id TEXT PRIMARY KEY, user_id TEXT REFERENCES users(id) ON DELETE SET NULL, xp INTEGER NOT NULL, coins INTEGER NOT NULL,
  origin TEXT NOT NULL, reason TEXT NOT NULL, created REAL NOT NULL, actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
  UNIQUE(user_id,origin)
+);
+```
+
+## `login_days`
+
+| Column | SQLite type | Nullable | Default | Primary-key position |
+|---|---|---|---|---|
+| `user_id` | TEXT | No | `None` | 1 |
+| `day` | TEXT | No | `None` | 2 |
+| `created` | REAL | No | `None` | — |
+
+Foreign keys:
+
+- `user_id` → `users.id`; delete CASCADE; update NO ACTION.
+
+Indexes and uniqueness:
+
+- `ix_login_days_user` (user_id, day); non-unique; `CREATE INDEX ix_login_days_user ON login_days(user_id,day)`
+- `sqlite_autoindex_login_days_1` (user_id, day); UNIQUE; automatic primary/unique constraint.
+
+Complete table constraints:
+
+```sql
+CREATE TABLE login_days (
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, day TEXT NOT NULL, created REAL NOT NULL,
+ PRIMARY KEY(user_id,day)
 );
 ```
 
@@ -1206,6 +1325,78 @@ Complete table constraints:
 CREATE TABLE streak_days (
  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, day TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('study','grace','freeze')),
  created REAL NOT NULL, PRIMARY KEY(user_id,day)
+);
+```
+
+## `studio_artifacts`
+
+| Column | SQLite type | Nullable | Default | Primary-key position |
+|---|---|---|---|---|
+| `id` | TEXT | No | `None` | 1 |
+| `owner_id` | TEXT | No | `None` | — |
+| `source_id` | TEXT | No | `None` | — |
+| `kind` | TEXT | No | `None` | — |
+| `title` | TEXT | No | `None` | — |
+| `body` | TEXT | No | `None` | — |
+| `ai` | INTEGER | No | `0` | — |
+| `created` | REAL | No | `None` | — |
+
+Foreign keys:
+
+- `source_id` → `studio_sources.id`; delete CASCADE; update NO ACTION.
+- `owner_id` → `users.id`; delete CASCADE; update NO ACTION.
+
+Indexes and uniqueness:
+
+- `ix_studio_artifact_owner` (owner_id, created); non-unique; `CREATE INDEX ix_studio_artifact_owner ON studio_artifacts(owner_id,created)`
+- `sqlite_autoindex_studio_artifacts_1` (id); UNIQUE; automatic primary/unique constraint.
+
+Complete table constraints:
+
+```sql
+CREATE TABLE studio_artifacts (
+ id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ source_id TEXT NOT NULL REFERENCES studio_sources(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN ('reviewer','summary','study_plan','flashcards','quizlet','quiz','slides','transcript')),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 160), body TEXT NOT NULL,
+ ai INTEGER NOT NULL DEFAULT 0 CHECK(ai IN (0,1)), created REAL NOT NULL
+);
+```
+
+## `studio_sources`
+
+| Column | SQLite type | Nullable | Default | Primary-key position |
+|---|---|---|---|---|
+| `id` | TEXT | No | `None` | 1 |
+| `owner_id` | TEXT | No | `None` | — |
+| `title` | TEXT | No | `None` | — |
+| `filename` | TEXT | No | `None` | — |
+| `mime` | TEXT | No | `None` | — |
+| `bytes` | INTEGER | No | `None` | — |
+| `sha256` | TEXT | No | `None` | — |
+| `file_key` | TEXT | Yes | `None` | — |
+| `uploaded` | INTEGER | No | `0` | — |
+| `state` | TEXT | No | `'uploading'` | — |
+| `created` | REAL | No | `None` | — |
+
+Foreign keys:
+
+- `owner_id` → `users.id`; delete CASCADE; update NO ACTION.
+
+Indexes and uniqueness:
+
+- `ix_studio_source_owner` (owner_id, created); non-unique; `CREATE INDEX ix_studio_source_owner ON studio_sources(owner_id,created)`
+- `sqlite_autoindex_studio_sources_1` (id); UNIQUE; automatic primary/unique constraint.
+
+Complete table constraints:
+
+```sql
+CREATE TABLE studio_sources (
+ id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 120), filename TEXT NOT NULL CHECK(length(filename) BETWEEN 1 AND 180),
+ mime TEXT NOT NULL CHECK(length(mime) BETWEEN 1 AND 120), bytes INTEGER NOT NULL CHECK(bytes BETWEEN 1 AND 26214400),
+ sha256 TEXT NOT NULL CHECK(length(sha256)=64), file_key TEXT, uploaded INTEGER NOT NULL DEFAULT 0 CHECK(uploaded>=0),
+ state TEXT NOT NULL DEFAULT 'uploading' CHECK(state IN ('uploading','ready','failed')), created REAL NOT NULL
 );
 ```
 

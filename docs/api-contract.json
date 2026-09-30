@@ -703,6 +703,60 @@
       "errors": "VALIDATION"
     },
     {
+      "method": "POST",
+      "path": "/api/dungeon/launch",
+      "auth": "public",
+      "idempotency": false,
+      "request": "{companion:moss|lumi|coral|sky|plum|sunny|mint|nova|ember|bubbles|byte|clover|mochi|comet|pebble|melody|taro|sol,difficulty:easy|average|hard|hell,run_id?,ticket?}",
+      "response": "{launched,already_running,companion,difficulty}",
+      "errors": "VALIDATION,DUNGEON_UNAVAILABLE,DUNGEON_LAUNCH_FAILED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dungeon/runs",
+      "auth": "student",
+      "idempotency": false,
+      "request": "{difficulty:easy|average|hard|hell,companion}",
+      "response": "{run_id,ticket,expires_at,difficulty,question_count,hint_cost,time_limit_seconds,mistake_limit,source}",
+      "errors": "VALIDATION,FEATURE_DISABLED"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dungeon/runs/{run_id}/questions",
+      "auth": "dungeon",
+      "idempotency": false,
+      "request": "-",
+      "response": "{run_id,questions:[{index,prompt,options,subject,source}],state}",
+      "errors": "RUN_NOT_FOUND,TICKET_INVALID"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dungeon/runs/{run_id}/answer",
+      "auth": "dungeon",
+      "idempotency": false,
+      "request": "{index,choice}",
+      "response": "{index,correct,correct_choice,explanation,coins_awarded,mercy_token,cap_reached,flagged_fast,state}",
+      "errors": "VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,RATE_LIMITED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dungeon/runs/{run_id}/hint",
+      "auth": "dungeon",
+      "idempotency": false,
+      "request": "{index}",
+      "response": "{index,removed_choices,coins_spent,wallet_balance}",
+      "errors": "VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,INSUFFICIENT_COINS,RATE_LIMITED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dungeon/runs/{run_id}/finish",
+      "auth": "dungeon",
+      "idempotency": false,
+      "request": "{outcome:victory|lost|abandoned|timeout}",
+      "response": "{run_id,outcome,answered,correct_count,coins_awarded,duration_seconds}",
+      "errors": "VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED"
+    },
+    {
       "method": "GET",
       "path": "/api/health",
       "auth": "public",

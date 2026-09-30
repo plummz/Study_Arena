@@ -8,6 +8,7 @@ window/size/viewport_height=720
 window/size/window_width_override=1280
 window/size/window_height_override=720
 window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 window/handheld/orientation=0
 
 [rendering]
@@ -16,6 +17,9 @@ renderer/rendering_method.mobile="gl_compatibility"
 textures/default_filters/use_nearest_mipmap_filter=false
 textures/vram_compression/import_etc2_astc=true
 occlusion_culling/use_occlusion_culling=true
+limits/opengl/max_lights_per_object=16
+lights_and_shadows/positional_shadow/atlas_size=0
+environment/defaults/default_clear_color=Color(0.02, 0.016, 0.03, 1)
 
 [input]
 move_forward={"deadzone":0.3,"events":[Object(InputEventKey,"physical_keycode":87)]}

@@ -142,6 +142,27 @@ CREATE TABLE IF NOT EXISTS ledger (
  UNIQUE(user_id,origin)
 );
 CREATE INDEX IF NOT EXISTS ix_ledger_user ON ledger(user_id,created);
+CREATE TABLE IF NOT EXISTS dungeon_runs (
+ id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ ticket_hash TEXT NOT NULL UNIQUE, ticket_expires REAL NOT NULL,
+ difficulty TEXT NOT NULL CHECK(difficulty IN ('easy','average','hard','hell')), companion TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('active','won','lost','abandoned','expired')),
+ started REAL NOT NULL, ended REAL, time_limit_seconds INTEGER NOT NULL,
+ mistake_limit INTEGER NOT NULL, hint_cost INTEGER NOT NULL, mercy_tokens INTEGER NOT NULL DEFAULT 0,
+ mistakes_used INTEGER NOT NULL DEFAULT 0, coins_awarded INTEGER NOT NULL DEFAULT 0,
+ last_answer_at REAL, source TEXT NOT NULL CHECK(source IN ('library','mixed','practice'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_dungeon_one_active ON dungeon_runs(user_id) WHERE state='active';
+CREATE INDEX IF NOT EXISTS ix_dungeon_user_started ON dungeon_runs(user_id,started);
+CREATE TABLE IF NOT EXISTS dungeon_run_questions (
+ run_id TEXT NOT NULL REFERENCES dungeon_runs(id) ON DELETE CASCADE, idx INTEGER NOT NULL CHECK(idx BETWEEN 0 AND 49),
+ prompt TEXT NOT NULL, options TEXT NOT NULL, correct_choice INTEGER NOT NULL CHECK(correct_choice BETWEEN 0 AND 3),
+ explanation TEXT NOT NULL, subject TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('quiz','flashcard','practice')),
+ served_at REAL, answered_at REAL, choice INTEGER, correct INTEGER, coins_awarded INTEGER NOT NULL DEFAULT 0,
+ flagged_fast INTEGER NOT NULL DEFAULT 0, mercy_token INTEGER NOT NULL DEFAULT 0, hint_removed TEXT,
+ answer_response TEXT, hint_response TEXT,
+ PRIMARY KEY(run_id,idx)
+);
 CREATE TRIGGER IF NOT EXISTS immutable_ledger_update BEFORE UPDATE OF xp,coins,origin,reason,created ON ledger BEGIN SELECT RAISE(ABORT,'immutable ledger'); END;
 CREATE TRIGGER IF NOT EXISTS immutable_ledger_delete BEFORE DELETE ON ledger BEGIN SELECT RAISE(ABORT,'immutable ledger'); END;
 CREATE TABLE IF NOT EXISTS catalog (

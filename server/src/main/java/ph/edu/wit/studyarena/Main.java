@@ -54,7 +54,7 @@ public final class Main {
     Economy economy = new Economy(api);
     new Study(api, content, economy);
     new Studio(api);
-    new Dungeon(api);
+    new Dungeon(api, economy);
     Social social = new Social(api, content, economy);
     new Admin(api, economy, content);
     api.add(

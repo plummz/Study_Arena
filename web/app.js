@@ -4,6 +4,7 @@ import { Client, ApiError } from "./api.js";
 import {
   API_CONFIGURED,
   API_UNAVAILABLE_MESSAGE,
+  API_URL,
   IS_GITHUB_PAGES,
 } from "./config.js";
 import { reminders, pushRegistration } from "./native.js";
@@ -359,7 +360,7 @@ function shell(content) {
     ["focus", "Focus time"],
     ["library", "Study library"],
     ...(user ? [["studio", "AI Study Studio"]] : []),
-    ...(user ? [["dungeon", "3D Dungeon"]] : []),
+    ["dungeon", "3D Dungeon"],
     ["progress", "My progress"],
     ["shop", "Rewards"],
   ];
@@ -415,7 +416,7 @@ async function go(next, data = {}) {
     '<div class="loading" aria-busy="true">Opening your study space…</div>',
   );
   try {
-    if (!topics.length) topics = (await load("/api/topics")).items;
+    if (!topics.length && next !== "dungeon") topics = (await load("/api/topics")).items;
     const view = await views[next](data);
     if (n !== generation) return;
     shell(view.html ?? view);
@@ -608,7 +609,7 @@ views.home = async () => {
       )
       .join("") ||
     `<div class="icon-square">${icon("library")}</div><h3>Get to know your strengths.</h3><p>A short quiz helps you see what feels familiar and what could use another look.</p>`
-  }<div class="spaced">${button("See my learning plan", () => (user ? go("progress") : authPage()), "small")}</div></div><p class="quiet-note spaced">◇ Your progress is private. Always your pace.</p></section></div>${user ? `<section class="dungeon-callout"><div><div class="eyebrow">Now open · 3D learning adventure</div><h2>Enter the Dungeon of Knowledge</h2><p>Explore a medieval maze with ${h(companionById(companionState().selected).name)}, face 100 animated encounters, dodge traps, and earn a coin for every correct answer.</p>${button("Enter the 3D Dungeon  →", () => go("dungeon"), "primary")}</div><div class="dungeon-gate" aria-hidden="true"><span>✦</span><i></i><b>100 ENCOUNTERS</b></div></section>` : ""}`;
+  }<div class="spaced">${button("See my learning plan", () => (user ? go("progress") : authPage()), "small")}</div></div><p class="quiet-note spaced">◇ Your progress is private. Always your pace.</p></section></div>${user ? `<section class="dungeon-callout"><div><div class="eyebrow">Now open · 3D learning adventure</div><h2>Enter the Dungeon of Knowledge</h2><p>Explore a medieval maze with ${h(companionById(companionState().selected).name)}, face up to 50 animated encounters, grab relics, dodge traps, and earn a coin for every correct answer.</p>${button("Enter the 3D Dungeon  →", () => go("dungeon"), "primary")}</div><div class="dungeon-gate" aria-hidden="true"><span>✦</span><i></i><b>20–50 ENCOUNTERS</b></div></section>` : ""}`;
 };
 views.onboarding = async () =>
   `${title("Make it yours", "What are you studying?", "Choose your course and study rhythm. You can change these anytime.")}<div class="card">${profileForm(true)}</div>`;
@@ -1372,31 +1373,41 @@ views.progress = async () => {
   }</section>`;
 };
 views.dungeon = async () => {
-  if (!user)
-    return `${title("3D learning game", "Enter the Dungeon of Knowledge", "Sign in to launch the local medieval maze.")}${button("Sign in", () => authPage(), "primary")}`;
   const companion = companionById(companionState().selected);
   const difficultyOptions = [
-    { value: "easy", label: "Easy · 30 min · 10 mistakes · 2-coin hints" },
-    { value: "average", label: "Average · 45 min · 7 mistakes · 3-coin hints" },
-    { value: "hard", label: "Hard · 60 min · 5 mistakes · 4-coin hints" },
-    { value: "hell", label: "Hell · 80 min · 3 mistakes · 5-coin hints" },
+    { value: "easy", label: "Easy · 20 questions · 8 min · 5 mistakes · 2-coin hints" },
+    { value: "average", label: "Average · 30 questions · 12 min · 5 mistakes · 3-coin hints" },
+    { value: "hard", label: "Hard · 40 questions · 16 min · 4 mistakes · 4-coin hints" },
+    { value: "hell", label: "Hell · 50 questions · 20 min · 3 mistakes · 5-coin hints" },
   ];
-  return `${title("3D learning game", "Dungeon of Knowledge", "Explore a medieval maze, answer 100 encounters and survive its traps.")}<div class="dungeon-mobile-note"><strong>Playing on a phone?</strong> Turn your phone sideways. The web dungeon includes touch controls for movement, camera, running, jumping, map, and pause.</div><div class="split"><section class="card"><div class="eyebrow">Your selected companion</div><div class="dungeon-companion-preview">${companionSprite(companion, "story-companion")}<div><h2>${h(companion.name)}</h2><p>${h(companion.note)}</p><p class="caption">The dungeon launches with this companion automatically.</p></div></div></section><section class="card"><h2>Choose difficulty and enter</h2>${form("launchDungeon", `${select("Difficulty", "difficulty", difficultyOptions)}<button type="submit" class="primary full">Play 3D Dungeon</button>`, async (f) => {
+  return `${title("3D learning game", "Dungeon of Knowledge", "Explore a compact medieval maze, answer 20 to 50 encounters and survive its traps.")}<div class="dungeon-mobile-note"><strong>Playing on a phone?</strong> Turn your phone sideways. The first-person web dungeon includes a movement stick, drag-to-look, running, jumping, map, and pause.</div><div class="split"><section class="card"><div class="eyebrow">Your selected companion</div><div class="dungeon-companion-preview">${companionSprite(companion, "story-companion")}<div><h2>${h(companion.name)}</h2><p>${h(companion.note)}</p><p class="caption">The dungeon launches with this companion automatically.</p></div></div></section><section class="card"><h2>Choose difficulty and enter</h2><p class="caption">${user && user.competition && flag("competition") && navigator.onLine && API_CONFIGURED ? "Signed-in online runs can save earned coins." : "Practice run — coins are not saved."}</p>${form("launchDungeon", `${select("Difficulty", "difficulty", difficultyOptions)}<button type="submit" class="primary full">Play 3D Dungeon</button>`, async (f) => {
+    const companionId = companionState().selected;
+    const difficulty = f.get("difficulty");
+    const rewardRun = Boolean(user && user.competition && flag("competition") && navigator.onLine && API_CONFIGURED);
+    const run = rewardRun
+      ? await client.mutate("/api/dungeon/runs", { companion: companionId, difficulty })
+      : null;
     if (IS_GITHUB_PAGES) {
       const repository = location.pathname.split("/").filter(Boolean)[0];
       const dungeonUrl = new URL(`/${repository}/dungeon/index.html`, location.origin);
-      dungeonUrl.searchParams.set("companion", companionState().selected);
-      dungeonUrl.searchParams.set("difficulty", f.get("difficulty"));
+      dungeonUrl.searchParams.set("companion", companionId);
+      dungeonUrl.searchParams.set("difficulty", difficulty);
+      if (run) {
+        dungeonUrl.searchParams.set("run", run.run_id);
+        dungeonUrl.searchParams.set("ticket", run.ticket);
+        dungeonUrl.searchParams.set("api", API_URL);
+      }
       location.assign(dungeonUrl.href);
       return;
     }
     const result = await client.mutate("/api/dungeon/launch", {
-      companion: companionState().selected,
-      difficulty: f.get("difficulty"),
+      companion: companionId,
+      difficulty,
+      ...(run ? { run_id: run.run_id, ticket: run.ticket } : {}),
     }, { timeout: 20000 });
     toast(result.already_running ? "The dungeon is already open." : `Opening ${companion.name}’s dungeon…`);
     companionReact("celebrate", `${companion.name} is ready for the dungeon!`, "hop");
-  })}</section></div><section class="card section"><h2>Controls</h2><div class="grid"><p><strong>Phone</strong><br><span class="caption">Use the on-screen movement and camera pads</span></p><p><strong>RUN / JUMP</strong><br><span class="caption">Hold run while moving; jump over traps and snakes</span></p><p><strong>MAP / Ⅱ</strong><br><span class="caption">Open the map or pause and save</span></p><p><strong>Keyboard</strong><br><span class="caption">WASD, Shift, Space, arrow keys, M, and Escape</span></p></div></section>`;
+  })}</section></div><section class="card section"><h2>Controls</h2><div class="grid"><p><strong>Phone</strong><br><span class="caption">Left stick to move; drag the right side to look around</span></p><p><strong>RUN / JUMP</strong><br><span class="caption">Hold run while moving; jump over traps and snakes</span></p><p><strong>MAP / Ⅱ</strong><br><span class="caption">Open the map or pause and save</span></p><p><strong>Keyboard &amp; mouse</strong><br><span class="caption">Click to look with the mouse; WASD, Shift, Space, M, Escape; 1–4 answer, H hint</span></p></div></section>`;
 };
 function chunkBase64(bytes) {
   let binary = "";

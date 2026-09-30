@@ -27,7 +27,8 @@ export async function server(port = 8181) {
   );
   child.stdout.on("data", (b) => (logs += b));
   child.stderr.on("data", (b) => (logs += b));
-  for (let i = 0; i < 150; i++) {
+  const attempts = Number(process.env.ARENA_START_ATTEMPTS || 150);
+  for (let i = 0; i < attempts; i++) {
     try {
       const r = await fetch(`${origin}/api/health`);
       if (r.ok)

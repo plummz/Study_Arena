@@ -1,0 +1,147 @@
+﻿{
+    "createdNodeIds":  [
+                           "30:2",
+                           "30:3",
+                           "30:4",
+                           "30:5",
+                           "30:6",
+                           "30:7",
+                           "30:8",
+                           "30:9",
+                           "30:10",
+                           "30:11",
+                           "30:12",
+                           "30:13",
+                           "30:14",
+                           "30:15",
+                           "30:16",
+                           "30:17",
+                           "30:18"
+                       ],
+    "pageId":  "30:2",
+    "mobilePageId":  "30:18",
+    "components":  {
+                       "Button/Primary":  "30:3",
+                       "Button/Secondary":  "30:5",
+                       "Nav/Default":  "30:7",
+                       "Nav/Selected":  "30:9",
+                       "Stat":  "30:11"
+                   },
+    "properties":  {
+                       "Button/Primary":  {
+                                              "label":  "Label#30:0"
+                                          },
+                       "Button/Secondary":  {
+                                                "label":  "Label#30:1"
+                                            },
+                       "Nav/Default":  {
+                                           "label":  "Label#30:2"
+                                       },
+                       "Nav/Selected":  {
+                                            "label":  "Label#30:3"
+                                        },
+                       "Stat":  {
+                                    "label":  "Label#30:4",
+                                    "caption":  "Caption#30:5"
+                                }
+                   },
+    "screens":  [
+                    {
+                        "id":  "30:14",
+                        "name":  "01 Home"
+                    },
+                    {
+                        "id":  "30:15",
+                        "name":  "02 Study Session"
+                    },
+                    {
+                        "id":  "30:16",
+                        "name":  "03 Leaderboard"
+                    },
+                    {
+                        "id":  "30:17",
+                        "name":  "04 Challenges"
+                    }
+                ],
+    "colorVariableIds":  {
+                             "primary/500":  "VariableID:11:3",
+                             "primary/700":  "VariableID:11:4",
+                             "primary/100":  "VariableID:11:5",
+                             "accent/volt":  "VariableID:11:6",
+                             "accent/ember":  "VariableID:11:7",
+                             "accent/gold":  "VariableID:11:8",
+                             "neutral/night":  "VariableID:11:9",
+                             "neutral/ink":  "VariableID:11:10",
+                             "neutral/slate":  "VariableID:11:11",
+                             "neutral/mist":  "VariableID:11:12",
+                             "neutral/line":  "VariableID:11:13",
+                             "neutral/canvas":  "VariableID:11:14",
+                             "neutral/white":  "VariableID:11:15"
+                         },
+    "desktop":  [
+                    {
+                        "id":  "30:14",
+                        "name":  "01 Home",
+                        "width":  1440,
+                        "height":  1024,
+                        "children":  2
+                    },
+                    {
+                        "id":  "30:15",
+                        "name":  "02 Study Session",
+                        "width":  1440,
+                        "height":  1024,
+                        "children":  2
+                    },
+                    {
+                        "id":  "30:16",
+                        "name":  "03 Leaderboard",
+                        "width":  1440,
+                        "height":  1024,
+                        "children":  2
+                    },
+                    {
+                        "id":  "30:17",
+                        "name":  "04 Challenges",
+                        "width":  1440,
+                        "height":  1024,
+                        "children":  2
+                    }
+                ],
+    "mobile":  [
+                   {
+                       "id":  "35:2",
+                       "name":  "M01 Home",
+                       "width":  390,
+                       "height":  844
+                   },
+                   {
+                       "id":  "35:67",
+                       "name":  "M02 Study Session",
+                       "width":  390,
+                       "height":  844
+                   },
+                   {
+                       "id":  "35:118",
+                       "name":  "M03 Leaderboard",
+                       "width":  390,
+                       "height":  844
+                   },
+                   {
+                       "id":  "35:191",
+                       "name":  "M04 Challenges",
+                       "width":  390,
+                       "height":  844
+                   }
+               ],
+    "validation":  {
+                       "desktopVisual":  "passed after badge-header and leaderboard padding fixes",
+                       "mobileVisual":  "passed after focus-card padding and level-badge header fixes",
+                       "fonts":  [
+                                     "Inter",
+                                     "Space Grotesk"
+                                 ],
+                       "independentReview":  "All eight screens visually reviewed; typography and text containment passed; all minor frame-bound findings resolved."
+                   },
+    "status":  "complete; independent review passed"
+}
