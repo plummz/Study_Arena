@@ -23,12 +23,44 @@ final class Db implements AutoCloseable {
             getClass().getResourceAsStream("/schema.sql").readAllBytes(),
             java.nio.charset.StandardCharsets.UTF_8);
     StringBuilder statement = new StringBuilder();
+    String catalogDdl = null;
     for (String line : sql.split("\n")) {
       statement.append(line).append('\n');
       if (line.strip().endsWith(";")) {
+        if (statement.indexOf("CREATE TABLE IF NOT EXISTS catalog (") >= 0)
+          catalogDdl = statement.toString();
         exec(statement.toString());
         statement.setLength(0);
       }
+    }
+    upgradeCatalogKinds(catalogDdl);
+  }
+
+  // CREATE TABLE IF NOT EXISTS leaves an older catalog CHECK in place, so a database created
+  // before the 'effect' kind existed is rebuilt once (SQLite's documented 12-step procedure).
+  void upgradeCatalogKinds(String catalogDdl) throws SQLException {
+    Map<String, Object> table =
+        one("SELECT sql FROM sqlite_master WHERE type='table' AND name='catalog'");
+    if (catalogDdl == null || table == null || str(table, "sql").contains("'effect'")) return;
+    exec("PRAGMA foreign_keys=OFF");
+    c.setAutoCommit(false);
+    try {
+      exec(catalogDdl.replace("IF NOT EXISTS catalog (", "catalog_upgrade ("));
+      exec("INSERT INTO catalog_upgrade SELECT * FROM catalog");
+      exec("DROP TABLE catalog");
+      exec("ALTER TABLE catalog_upgrade RENAME TO catalog");
+      require(
+          all("PRAGMA foreign_key_check").isEmpty(),
+          500,
+          "MIGRATION",
+          "Catalog upgrade broke a reference.");
+      c.commit();
+    } catch (Exception e) {
+      c.rollback();
+      throw e;
+    } finally {
+      c.setAutoCommit(true);
+      exec("PRAGMA foreign_keys=ON");
     }
   }
 

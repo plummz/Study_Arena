@@ -193,9 +193,8 @@ try {
   });
   results.push("E2E08 360px mobile reflow without horizontal overflow");
   await page.getByRole("button", { name: "More", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Switch light / dark", exact: true })
-    .click();
+  await page.getByLabel("Display theme", { exact: true }).selectOption("dark");
+  await page.getByRole("button", { name: "Apply theme", exact: true }).click();
   assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
   await page.screenshot({
     path: "docs/screenshots/mobile-settings-dark.png",
@@ -291,6 +290,88 @@ try {
   await hatCard.getByRole("button",{name:"Equip",exact:true}).click();
   await page.locator('.avatar[aria-label*="leaf hat"]').waitFor();
   results.push("E2E13 Purchased hat equips and appears on the profile avatar");
+  const coinsIn = async (selector) => Number((await page.locator(selector).textContent()).match(/\d+/)[0]);
+  const shopCoins = await coinsIn("#shop-coins");
+  await page.getByRole("navigation",{name:"Main",exact:true}).getByRole("button",{name:"My space",exact:true}).click();
+  await page.locator("#home-coins").waitFor();
+  assert.equal(await coinsIn("#home-coins"), shopCoins);
+  assert.equal(shopCoins, (await call("/api/wallet", null, studentAuth.token)).wallet.coins);
+  results.push("E2E16 Home and Rewards show the same server-confirmed coin balance after coins arrive from outside the page");
+  const reward = async (title, price) => {
+    await page.getByRole("navigation",{name:"Main",exact:true}).getByRole("button",{name:"Rewards",exact:true}).click();
+    const card = page.locator("article").filter({has:page.getByRole("heading",{name:title,exact:true})});
+    await card.getByRole("button",{name:`Get for ${price} coins`}).click();
+    await card.getByRole("button",{name:"Equip",exact:true}).click();
+  };
+  await reward("Gentle confetti", 15);
+  const layer = page.locator(".celebration-layer.celebration-confetti");
+  await layer.waitFor({ state: "attached" });
+  assert.equal(await layer.getAttribute("aria-hidden"), "true");
+  assert.equal(await layer.evaluate((el) => getComputedStyle(el).display), "block");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert.equal(await layer.evaluate((el) => getComputedStyle(el).display), "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  results.push("E2E17 Purchased confetti plays on celebrate and is hidden under reduced motion");
+  await reward("Warm paper theme", 20);
+  await page.waitForFunction(() => document.documentElement.dataset.theme === "sepia");
+  await page.getByRole("navigation",{name:"Main",exact:true}).getByRole("button",{name:"Settings",exact:true}).click();
+  const themeSelect = page.getByLabel("Display theme", { exact: true });
+  await themeSelect.waitFor();
+  assert.deepEqual(await themeSelect.locator("option").allTextContents(), ["Light", "Dark", "High contrast", "Warm paper"]);
+  await themeSelect.selectOption("contrast");
+  await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+  await page.waitForFunction(() => document.documentElement.dataset.theme === "contrast");
+  await page.getByLabel("Display theme", { exact: true }).selectOption("light");
+  await page.getByRole("button", { name: "Apply theme", exact: true }).click();
+  results.push("E2E18 Warm paper theme bought and equipped; free high-contrast theme applied from Settings");
+  await page.getByRole("navigation",{name:"Main",exact:true}).getByRole("button",{name:"My space",exact:true}).click();
+  await page.getByRole("button", { name: "Add a note to self", exact: true }).click();
+  await page.getByLabel("Your note", { exact: true }).fill("Synthetic reminder: <b>lab</b> report due Friday");
+  await page.getByRole("button", { name: "Save note", exact: true }).click();
+  await page.locator(".home-note-text").waitFor();
+  assert.equal(await page.locator(".home-note-text").textContent(), "Synthetic reminder: <b>lab</b> report due Friday");
+  await page.locator(".home-note").getByRole("button", { name: "Edit note", exact: true }).click();
+  await page.getByLabel("Show on my Home screen").uncheck();
+  await page.getByRole("button", { name: "Save note", exact: true }).click();
+  await page.getByRole("button", { name: "Show note to self", exact: true }).waitFor();
+  assert.equal(await page.locator(".home-note").count(), 0);
+  results.push("E2E19 Private note to self is written, shown as text, and hidden from Home");
+  const phone = await browser.newContext({ viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true });
+  const phonePage = await phone.newPage();
+  phonePage.on("pageerror", (e) => errors.push(e.message));
+  await phonePage.goto(app.url);
+  await phonePage.getByRole("heading", { name: /A little progress/ }).waitFor();
+  await phonePage.getByRole("button", { name: "Sign in", exact: true }).click();
+  const authCard = phonePage.locator(".auth");
+  await authCard.waitFor();
+  const cardBox = await authCard.boundingBox();
+  assert.ok(Math.abs(cardBox.x - (375 - cardBox.x - cardBox.width)) <= 1, "login card is horizontally centred");
+  assert.ok(await phonePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  await phonePage.setViewportSize({ width: 375, height: 600 });
+  assert.equal((await authCard.boundingBox()).y, cardBox.y, "card stays put when the visible height shrinks");
+  let notch = "unsupported";
+  try {
+    const phoneCdp = await phone.newCDPSession(phonePage);
+    await phoneCdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, left: 0, bottom: 34, right: 0 } });
+    notch = await phonePage.locator(".auth-screen").evaluate((el) => getComputedStyle(el).paddingTop);
+  } catch {}
+  await phonePage.screenshot({ path: "docs/screenshots/mobile-login.png", fullPage: true });
+  results.push(`E2E20 375px login card is centred, stable when the viewport height changes, no overflow; notch top padding: ${notch}`);
+  await phone.close();
+  // A fresh context: a full-page screenshot after a CDP override drops Chromium's touch emulation.
+  const wide = await browser.newContext({ viewport: { width: 932, height: 430 }, isMobile: true, hasTouch: true });
+  const widePage = await wide.newPage();
+  widePage.on("pageerror", (e) => errors.push(e.message));
+  await widePage.goto(app.url);
+  await widePage.getByRole("heading", { name: /A little progress/ }).waitFor();
+  const landscape = await widePage.evaluate(() => ({
+    width: innerWidth,
+    nav: getComputedStyle(document.querySelector(".bottom-nav")).display,
+    sidebar: getComputedStyle(document.querySelector(".sidebar")).display,
+  }));
+  assert.deepEqual(landscape, { width: 932, nav: "flex", sidebar: "none" });
+  results.push("E2E21 932px landscape phone uses the mobile bottom navigation");
+  await wide.close();
   await teacherPage.close();
 
   assert.deepEqual(errors, []);

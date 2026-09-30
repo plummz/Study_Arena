@@ -105,7 +105,7 @@
       "auth": "student",
       "idempotency": false,
       "request": "—",
-      "response": "{profile,sessions,attempts,answers,reviews,decks,cards,materials,memberships,inventory,ledger,claims,evidence,settings,badges,streak_days}",
+      "response": "{profile,sessions,attempts,answers,reviews,decks,cards,materials,memberships,inventory,ledger,claims,evidence,settings,badges,streak_days,login_days,studio_sources,studio_artifacts}",
       "errors": "REAUTH_REQUIRED"
     },
     {
@@ -383,7 +383,7 @@
       "path": "/api/cards/{id}/review",
       "auth": "student",
       "idempotency": true,
-      "request": "{known:boolean,occurred?}",
+      "request": "{known?:boolean,rating?:again|hard|good|easy,occurred?}",
       "response": "{schedule,rewarded,wallet}",
       "errors": "VALIDATION,NOT_FOUND"
     },
@@ -440,6 +440,132 @@
       "request": "—",
       "response": "{topics:[{mastery,evidence_count,label,confidence,suggested_minutes}],history,wallet,streak,today_minutes,week_minutes,badges,levels_enabled}",
       "errors": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{sources,artifacts,ai_enabled,max_bytes,quota_bytes,used_bytes}",
+      "errors": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/sources",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{title,filename,mime,bytes,sha256}",
+      "response": "{source}",
+      "errors": "VALIDATION,QUOTA"
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/sources/{id}/chunks",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{offset,base64,complete}",
+      "response": "{source}",
+      "errors": "UPLOAD_OFFSET,CHECKSUM_MISMATCH,QUOTA"
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio/sources/{id}/file",
+      "auth": "student",
+      "idempotency": false,
+      "request": "?offset=byte offset",
+      "response": "{source,base64,offset,next_offset,complete}",
+      "errors": "NOT_FOUND,UPLOAD_INCOMPLETE"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/studio/sources/{id}",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{ok}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/studio/generate",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{source_id,kind,instructions?}",
+      "response": "{artifact,ai_enabled}",
+      "errors": "NOT_FOUND,AI_NOT_CONFIGURED,UNSUPPORTED_AI_FILE,AI_KEY_REJECTED,AI_RATE_LIMITED,AI_BUSY,AI_MODEL_UNAVAILABLE,AI_BLOCKED,AI_UNAVAILABLE"
+    },
+    {
+      "method": "GET",
+      "path": "/api/studio/artifacts/{id}",
+      "auth": "student",
+      "idempotency": false,
+      "request": "—",
+      "response": "{artifact}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/studio/artifacts/{id}",
+      "auth": "student",
+      "idempotency": true,
+      "request": "{}",
+      "response": "{ok}",
+      "errors": "NOT_FOUND"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dungeon/launch",
+      "auth": "public",
+      "idempotency": false,
+      "request": "{companion:moss|lumi|coral|sky|plum|sunny|mint|nova|ember|bubbles|byte|clover|mochi|comet|pebble|melody|taro|sol,difficulty:easy|average|hard|hell,run_id?,ticket?}",
+      "response": "{launched,already_running,companion,difficulty}",
+      "errors": "VALIDATION,DUNGEON_UNAVAILABLE,DUNGEON_LAUNCH_FAILED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dungeon/runs",
+      "auth": "student",
+      "idempotency": false,
+      "request": "{difficulty:easy|average|hard|hell,companion}",
+      "response": "{run_id,ticket,expires_at,difficulty,question_count,hint_cost,time_limit_seconds,mistake_limit,source}",
+      "errors": "VALIDATION,FEATURE_DISABLED"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dungeon/runs/{run_id}/questions",
+      "auth": "dungeon",
+      "idempotency": false,
+      "request": "-",
+      "response": "{run_id,questions:[{index,prompt,options,subject,source}],state}",
+      "errors": "RUN_NOT_FOUND,TICKET_INVALID"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dungeon/runs/{run_id}/answer",
+      "auth": "dungeon",
+      "idempotency": false,
+      "request": "{index,choice}",
+      "response": "{index,correct,correct_choice,explanation,coins_awarded,mercy_token,cap_reached,flagged_fast,state}",
+      "errors": "VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,RATE_LIMITED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dungeon/runs/{run_id}/hint",
+      "auth": "dungeon",
+      "idempotency": false,
+      "request": "{index}",
+      "response": "{index,removed_choices,coins_spent,wallet_balance}",
+      "errors": "VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,INSUFFICIENT_COINS,RATE_LIMITED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dungeon/runs/{run_id}/finish",
+      "auth": "dungeon",
+      "idempotency": false,
+      "request": "{outcome:victory|lost|abandoned|timeout}",
+      "response": "{run_id,outcome,answered,correct_count,coins_awarded,duration_seconds}",
+      "errors": "VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED"
     },
     {
       "method": "GET",
@@ -701,60 +827,6 @@
       "request": "{token,platform:android}",
       "response": "{ok}",
       "errors": "VALIDATION"
-    },
-    {
-      "method": "POST",
-      "path": "/api/dungeon/launch",
-      "auth": "public",
-      "idempotency": false,
-      "request": "{companion:moss|lumi|coral|sky|plum|sunny|mint|nova|ember|bubbles|byte|clover|mochi|comet|pebble|melody|taro|sol,difficulty:easy|average|hard|hell,run_id?,ticket?}",
-      "response": "{launched,already_running,companion,difficulty}",
-      "errors": "VALIDATION,DUNGEON_UNAVAILABLE,DUNGEON_LAUNCH_FAILED"
-    },
-    {
-      "method": "POST",
-      "path": "/api/dungeon/runs",
-      "auth": "student",
-      "idempotency": false,
-      "request": "{difficulty:easy|average|hard|hell,companion}",
-      "response": "{run_id,ticket,expires_at,difficulty,question_count,hint_cost,time_limit_seconds,mistake_limit,source}",
-      "errors": "VALIDATION,FEATURE_DISABLED"
-    },
-    {
-      "method": "GET",
-      "path": "/api/dungeon/runs/{run_id}/questions",
-      "auth": "dungeon",
-      "idempotency": false,
-      "request": "-",
-      "response": "{run_id,questions:[{index,prompt,options,subject,source}],state}",
-      "errors": "RUN_NOT_FOUND,TICKET_INVALID"
-    },
-    {
-      "method": "POST",
-      "path": "/api/dungeon/runs/{run_id}/answer",
-      "auth": "dungeon",
-      "idempotency": false,
-      "request": "{index,choice}",
-      "response": "{index,correct,correct_choice,explanation,coins_awarded,mercy_token,cap_reached,flagged_fast,state}",
-      "errors": "VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,RATE_LIMITED"
-    },
-    {
-      "method": "POST",
-      "path": "/api/dungeon/runs/{run_id}/hint",
-      "auth": "dungeon",
-      "idempotency": false,
-      "request": "{index}",
-      "response": "{index,removed_choices,coins_spent,wallet_balance}",
-      "errors": "VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,INSUFFICIENT_COINS,RATE_LIMITED"
-    },
-    {
-      "method": "POST",
-      "path": "/api/dungeon/runs/{run_id}/finish",
-      "auth": "dungeon",
-      "idempotency": false,
-      "request": "{outcome:victory|lost|abandoned|timeout}",
-      "response": "{run_id,outcome,answered,correct_count,coins_awarded,duration_seconds}",
-      "errors": "VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED"
     },
     {
       "method": "GET",

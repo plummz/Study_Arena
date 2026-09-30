@@ -21,6 +21,8 @@ services:
         sync: false
       - key: PRIZE_POLICY_APPROVED
         value: "false"
+      - key: GEMINI_API_KEY
+        sync: false
     disk:
       name: study-arena-data
       mountPath: /data

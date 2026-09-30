@@ -87,7 +87,8 @@ p {
 .shell {
   display: grid;
   grid-template-columns: 244px 1fr;
-  min-height: 100dvh;
+  min-height: 100vh;
+  min-height: 100svh;
 }
 .sidebar {
   border-right: 1px solid var(--line);
@@ -96,7 +97,8 @@ p {
   flex-direction: column;
   position: sticky;
   top: 0;
-  height: 100dvh;
+  height: 100vh;
+  height: 100svh;
 }
 .brand {
   display: flex;
@@ -105,6 +107,7 @@ p {
   font-weight: 750;
   font-size: 1.12rem;
   letter-spacing: -0.03em;
+  min-height: 44px;
   margin-bottom: 40px;
   text-decoration: none;
   color: var(--ink);
@@ -384,7 +387,7 @@ p {
 .field select,
 .field textarea {
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-border);
   padding: 12px 13px;
   border-radius: 10px;
   background: var(--input);
@@ -403,17 +406,31 @@ p {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 14px 0;
+  min-height: 44px;
+  margin: 4px 0;
+  cursor: pointer;
 }
 .check input {
   width: 20px;
   height: 20px;
   accent-color: var(--sage);
 }
+/* svh is the viewport with the browser bars shown, so it does not change (and the
+   card does not jump) when a mobile address bar slides in or out. Auto margins centre
+   the card without clipping it when the keyboard or a long form makes it taller. */
+.auth-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
 .auth {
+  width: 100%;
   max-width: 470px;
-  margin: 5vh auto;
-  padding: 25px;
+  margin: auto;
+  padding: 9px;
 }
 .auth .brand {
   justify-content: center;
@@ -587,6 +604,11 @@ dialog textarea {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
+/* The page region receives focus programmatically after navigation (for screen readers and
+   the skip link); it is not a control, so it needs no ring. */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
 .loading {
   padding: 45px;
   text-align: center;
@@ -656,7 +678,7 @@ dialog textarea {
     width: 155px;
   }
 }
-@media (max-width: 900px), (pointer: coarse) and (orientation: portrait) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1023px) {
   .shell {
     display: block;
   }
@@ -664,7 +686,8 @@ dialog textarea {
     display: none;
   }
   .content {
-    padding: 20px 18px 108px;
+    padding: max(20px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+      calc(108px + env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
   }
   .topbar {
     margin-bottom: 25px;
@@ -702,6 +725,16 @@ dialog textarea {
   }
   .page-title {
     gap: 10px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .section-header {
+    gap: 12px;
+  }
+  .section-header > button,
+  .row > button {
+    flex-shrink: 0;
+    white-space: nowrap;
   }
   .page-title h1 {
     font-size: 1.9rem;
@@ -740,8 +773,13 @@ dialog textarea {
     padding: 20px;
   }
   .auth {
-    padding: 16px;
-    margin: 10px auto;
+    padding: 0;
+  }
+  .auth .brand {
+    margin-bottom: 20px;
+  }
+  .auth .card {
+    padding: 22px 18px;
   }
   .row {
     align-items: start;
@@ -754,10 +792,15 @@ dialog textarea {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     scroll-behavior: auto !important;
     transition: none !important;
     animation: none !important;
+  }
+  .celebration-layer {
+    display: none !important;
   }
 }
 progress {
@@ -1055,6 +1098,56 @@ body.companion-dragging {
 html[data-companion-motion="gentle"] .companion-dock-sprite { animation-duration: 5s !important; }
 html[data-companion-motion="off"] .companion-dock-sprite,
 html[data-companion-motion="off"] .companion-dock::before { animation: none !important; }
+/* Purchased celebration effects: slow, soft motion with no flashing or strobing. */
+.celebration-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  overflow: hidden;
+  pointer-events: none;
+}
+html[data-companion-motion="off"] .celebration-layer { display: none; }
+.celebration-layer i {
+  position: absolute;
+  display: block;
+}
+.celebration-confetti i {
+  top: -16px;
+  left: calc((var(--i) + 0.5) / var(--n) * 100%);
+  width: 8px;
+  height: 13px;
+  border-radius: 2px;
+  background: #6f9b64;
+  opacity: 0;
+  animation: celebrate-fall 2.2s cubic-bezier(.3,.1,.4,1) calc(var(--i) * 17ms) both;
+}
+.celebration-confetti i:nth-child(3n) { background: #e2a623; animation-duration: 2.4s; }
+.celebration-confetti i:nth-child(3n + 1) { background: #d98b6a; width: 10px; height: 9px; }
+.celebration-confetti i:nth-child(4n) { background: #8fb3c9; animation-delay: calc(var(--i) * 17ms + 120ms); }
+.celebration-sparkles i {
+  top: 42%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px;
+  background: #e2a623;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  opacity: 0;
+  transform: rotate(calc(var(--i) / var(--n) * 360deg));
+  animation: celebrate-burst 1.5s ease-out calc(var(--i) * 12ms) both;
+}
+.celebration-sparkles i:nth-child(2n) { background: #f3d27a; width: 10px; height: 10px; margin: -5px; }
+@keyframes celebrate-fall {
+  0% { opacity: 0; transform: translateY(0) rotate(0); }
+  10% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(100vh) translateX(calc((var(--i) - var(--n) / 2) * 2px)) rotate(540deg); }
+}
+@keyframes celebrate-burst {
+  0% { opacity: 0; transform: rotate(calc(var(--i) / var(--n) * 360deg)) translateY(0) scale(.4); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(calc(var(--i) / var(--n) * 360deg)) translateY(-150px) scale(1); }
+}
 @keyframes companion-bubble-in {
   from { opacity: 0; transform: translate(8px, 8px) scale(0.94); }
   to { opacity: 1; transform: none; }
@@ -1152,7 +1245,7 @@ html[data-companion-motion="off"] .companion-dock::before { animation: none !imp
   85% { transform: translate3d(18px,-10px,0) rotate(6deg) scale(.97,1.04); }
   91% { transform: translate3d(-8px,-5px,0) rotate(-3deg); }
 }
-@media (max-width: 900px), (pointer: coarse) and (orientation: portrait) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1023px) {
   .companion-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1192,12 +1285,71 @@ html[data-companion-motion="off"] .companion-dock::before { animation: none !imp
     grid-template-columns: 1fr;
   }
 }
+/* Cosmos theme backdrop: fixed star layers and soft nebula glow behind opaque cards.
+   Decorative only; the slow twinkle stops under prefers-reduced-motion. */
+:root[data-theme="cosmos"] body::before,
+:root[data-theme="cosmos"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+:root[data-theme="cosmos"] body::before {
+  background:
+    radial-gradient(ellipse 60% 45% at 15% 10%, rgb(139 92 246 / 0.28), transparent 70%),
+    radial-gradient(ellipse 55% 40% at 88% 70%, rgb(56 132 255 / 0.22), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 55% 105%, rgb(236 112 199 / 0.16), transparent 70%),
+    radial-gradient(1px 1px at 23px 41px, #fff 60%, transparent 61%),
+    radial-gradient(1px 1px at 131px 87px, #dfe4ff 60%, transparent 61%),
+    radial-gradient(1.5px 1.5px at 197px 23px, #fff 60%, transparent 61%),
+    radial-gradient(1px 1px at 71px 163px, #c9d3ff 60%, transparent 61%),
+    radial-gradient(1px 1px at 173px 191px, #fff 60%, transparent 61%),
+    radial-gradient(1.5px 1.5px at 241px 131px, #ffe9b8 60%, transparent 61%);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 260px 220px, 260px 220px, 260px 220px,
+    260px 220px, 260px 220px, 260px 220px;
+}
+:root[data-theme="cosmos"] body::after {
+  background:
+    radial-gradient(2px 2px at 60px 70px, #fff 55%, transparent 60%),
+    radial-gradient(1.5px 1.5px at 310px 250px, #e7ecff 55%, transparent 60%),
+    radial-gradient(2px 2px at 420px 90px, #fff3cf 55%, transparent 60%);
+  background-size: 480px 360px;
+  opacity: 0.8;
+  animation: cosmos-twinkle 7s ease-in-out infinite alternate;
+}
+@keyframes cosmos-twinkle {
+  from { opacity: 0.45; }
+  to { opacity: 0.95; }
+}
+:root[data-theme="cosmos"] .sidebar {
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+}
+.home-note {
+  margin-bottom: 24px;
+  border-left: 5px solid var(--sage);
+  background: var(--peach);
+}
+.home-note .row {
+  align-items: center;
+}
+.home-note .eyebrow {
+  margin: 0;
+}
+.home-note-text {
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: 1.05rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .daily-plan article {
   padding: 16px;
   border-radius: 14px;
   background: var(--soft);
 }
 .daily-plan article p { min-height: 48px; }
+.daily-plan .grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .studio-upload progress { margin-bottom: 18px; }
 .studio-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 .studio-document {
@@ -1270,9 +1422,9 @@ html[data-companion-motion="off"] .companion-dock::before { animation: none !imp
 .dungeon-callout .eyebrow { color: #ffd27d; }
 .dungeon-gate { height: 142px; position: relative; border: 8px solid #9d7046; border-bottom: 0; border-radius: 80px 80px 8px 8px; background: linear-gradient(#190f2a,#4c2455); box-shadow: inset 0 0 0 5px #d5ae68,0 0 35px rgba(192,103,255,.38); display: grid; place-items: center; }
 .dungeon-gate:before,.dungeon-gate:after { content: ""; position: absolute; bottom: -12px; width: 48px; height: 32px; background: #745036; border: 4px solid #d5ae68; }.dungeon-gate:before { left: -20px; }.dungeon-gate:after { right: -20px; }
-.dungeon-gate span { font-size: 42px; color: #ffd76f; filter: drop-shadow(0 0 12px #ffbd4a); animation: dungeon-pulse 1.8s ease-in-out infinite; }.dungeon-gate b { position: absolute; bottom: 14px; font-size: 11px; letter-spacing: .12em; color: #f8dba2; }.dungeon-gate i { position: absolute; inset: 15px; border-radius: 60px 60px 4px 4px; background: repeating-linear-gradient(90deg,transparent 0 17px,rgba(255,255,255,.08) 18px 20px); }
+.dungeon-gate span { font-size: 42px; color: #ffd76f; filter: drop-shadow(0 0 12px #ffbd4a); animation: dungeon-pulse 1.8s ease-in-out infinite; }.dungeon-gate b { position: absolute; z-index: 1; bottom: 14px; font-size: 10px; letter-spacing: .06em; white-space: nowrap; color: #f8dba2; }.dungeon-gate i { position: absolute; inset: 15px; border-radius: 60px 60px 4px 4px; background: repeating-linear-gradient(90deg,transparent 0 17px,rgba(255,255,255,.08) 18px 20px); }
 @keyframes dungeon-pulse { 50% { transform: translateY(-7px) scale(1.12); filter: drop-shadow(0 0 20px #ffd260); } }
-@media (max-width: 900px), (pointer: coarse) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1023px) {
   .review-ratings,
   .streak-track { grid-template-columns: repeat(2, 1fr); }
   .companion-room { grid-template-columns: 1fr; }

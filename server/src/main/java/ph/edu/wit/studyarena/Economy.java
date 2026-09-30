@@ -170,7 +170,7 @@ final class Economy {
                   r.uid(),
                   r.p());
           require(
-              Set.of("skin", "border", "hat", "theme").contains(str(item, "kind")),
+              Set.of("skin", "border", "hat", "theme", "effect").contains(str(item, "kind")),
               422,
               "INVALID_ITEM",
               "This item cannot be equipped.");

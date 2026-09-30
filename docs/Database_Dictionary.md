@@ -291,7 +291,7 @@ Complete table constraints:
 
 ```sql
 CREATE TABLE catalog (
- id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('skin','border','hat','theme','content','freeze','prize')),
+ id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('skin','border','hat','theme','effect','content','freeze','prize')),
  price INTEGER NOT NULL CHECK(price>=0), stock INTEGER CHECK(stock>=0), adult_only INTEGER NOT NULL DEFAULT 0,
  rules TEXT NOT NULL DEFAULT '', rules_version INTEGER NOT NULL DEFAULT 1, sponsor TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1,
  value TEXT NOT NULL DEFAULT ''

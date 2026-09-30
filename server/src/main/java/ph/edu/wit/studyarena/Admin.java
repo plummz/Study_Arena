@@ -426,8 +426,8 @@ final class Admin {
           String id = id(),
               kind =
                   choice(
-                      r.body, "kind", "skin", "border", "hat", "theme", "content", "freeze",
-                      "prize");
+                      r.body, "kind", "skin", "border", "hat", "theme", "effect", "content",
+                      "freeze", "prize");
           if (kind.equals("content"))
             d.need("SELECT id FROM materials WHERE id=?", text(r.body, "value", 1, 120));
           String

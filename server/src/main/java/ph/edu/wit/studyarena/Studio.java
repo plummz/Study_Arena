@@ -13,34 +13,65 @@ import java.util.*;
 
 final class Studio {
   static final int LIMIT = 25 * 1024 * 1024;
-  static final Set<String> AUDIO =
-      Set.of("mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm");
-  static final Set<String> FILE_INPUTS =
-      Set.of(
-          "pdf", "txt", "md", "json", "html", "xml", "csv", "doc", "docx", "rtf", "odt",
-          "ppt", "pptx", "xls", "xlsx", "png", "jpg", "jpeg", "gif", "webp", "java", "js",
-          "ts", "py", "css", "sql");
+  // Per-student personal folder quota across all uploaded sources.
+  static final long QUOTA = 250L * 1024 * 1024;
+  // Stored files are AES-GCM sealed in 1 MiB segments so a download chunk can be decrypted
+  // without reading the whole file. Layout: MAGIC, then per segment nonce(12) + ciphertext+tag.
+  static final int SEGMENT = 1024 * 1024;
+  static final byte[] MAGIC = "SAF1".getBytes(StandardCharsets.US_ASCII);
+  // Files sent to Gemini as plain text (decoded UTF-8) rather than as binary parts.
+  static final Set<String> TEXT_FILES =
+      Set.of("txt", "md", "csv", "json", "html", "xml", "java", "js", "ts", "py", "css", "sql");
+  // Binary formats Gemini reads directly, by extension. Office files are not among them.
+  static final Map<String, String> GEMINI_MIME =
+      Map.ofEntries(
+          Map.entry("pdf", "application/pdf"),
+          Map.entry("png", "image/png"),
+          Map.entry("jpg", "image/jpeg"),
+          Map.entry("jpeg", "image/jpeg"),
+          Map.entry("webp", "image/webp"),
+          Map.entry("heic", "image/heic"),
+          Map.entry("heif", "image/heif"),
+          Map.entry("mp3", "audio/mp3"),
+          Map.entry("wav", "audio/wav"),
+          Map.entry("aiff", "audio/aiff"),
+          Map.entry("aac", "audio/aac"),
+          Map.entry("ogg", "audio/ogg"),
+          Map.entry("flac", "audio/flac"),
+          Map.entry("m4a", "audio/aac"),
+          Map.entry("mp4", "video/mp4"),
+          Map.entry("mpeg", "video/mpeg"),
+          Map.entry("webm", "video/webm"));
+  static final Set<String> JSON_KINDS = Set.of("flashcards", "quizlet", "quiz", "slides", "study_plan");
+  static final String GEMINI_URL ="https://generativelanguage.googleapis.com/v1beta/models/";
 
   final Api a;
   final Db d;
   final String apiKey;
   final String model;
+  final String fallbackModel;
   final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
 
   Studio(Api api) {
     a = api;
     d = api.db;
-    apiKey = Objects.toString(System.getenv("OPENAI_API_KEY"), "").strip();
-    model = System.getenv().getOrDefault("OPENAI_MODEL", "gpt-5.6");
+    apiKey = Objects.toString(System.getenv("GEMINI_API_KEY"), "").strip();
+    model = System.getenv().getOrDefault("GEMINI_MODEL", "gemini-3.8-flash");
+    fallbackModel = System.getenv().getOrDefault("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash");
+    // Status only; the key itself is never logged.
+    System.out.println(
+        apiKey.isBlank()
+            ? "AI Study Studio: local text mode (GEMINI_API_KEY is not set)"
+            : "AI Study Studio: Gemini enabled, model " + model);
 
     a.add(
         "GET", "/api/studio", "student", false, "—",
-        "{sources,artifacts,ai_enabled,max_bytes}", "",
+        "{sources,artifacts,ai_enabled,max_bytes,quota_bytes,used_bytes}", "",
         r ->
             map(
                 "sources",
                 d.all(
-                    "SELECT id,title,filename,mime,bytes,uploaded,state,created FROM studio_sources"
+                    "SELECT id,title,filename,mime,bytes,sha256,uploaded,state,created FROM studio_sources"
                         + " WHERE owner_id=? ORDER BY created DESC",
                     r.uid()),
                 "artifacts",
@@ -51,7 +82,11 @@ final class Studio {
                 "ai_enabled",
                 !apiKey.isBlank(),
                 "max_bytes",
-                LIMIT));
+                LIMIT,
+                "quota_bytes",
+                QUOTA,
+                "used_bytes",
+                used(r.uid())));
 
     a.add(
         "POST", "/api/studio/sources", "student", true,
@@ -61,6 +96,9 @@ final class Studio {
           int bytes = integer(r.body, "bytes", 1, LIMIT, 1);
           String digest = text(r.body, "sha256", 64, 64).toLowerCase(Locale.ROOT);
           require(digest.matches("[0-9a-f]{64}"), 422, "VALIDATION", "Invalid file checksum.");
+          require(
+              used(r.uid()) + bytes <= QUOTA, 413, "QUOTA",
+              "Your private folder is full (250 MB). Delete a file to make room.");
           String id = id();
           d.insert(
               "studio_sources",
@@ -103,13 +141,34 @@ final class Studio {
               d.exec("UPDATE studio_sources SET uploaded=0,state='failed' WHERE id=?", r.p());
               throw new Fault(422, "CHECKSUM_MISMATCH", "File checksum failed; upload it again.");
             }
-            Path target = a.files.resolve("studio-" + r.p() + ".bin");
-            Files.move(part, target, StandardCopyOption.REPLACE_EXISTING);
+            Path target = a.files.resolve("studio-" + r.p() + ".enc");
+            seal(part, target, r.p());
+            Files.delete(part);
             d.exec(
                 "UPDATE studio_sources SET file_key=?,uploaded=bytes,state='ready' WHERE id=?",
                 target.getFileName().toString(), r.p());
           }
           return map("source", source(r.p(), r.uid()));
+        });
+
+    a.add(
+        "GET", "/api/studio/sources/{id}/file", "student", false, "?offset=byte offset",
+        "{source,base64,offset,next_offset,complete}", "NOT_FOUND,UPLOAD_INCOMPLETE",
+        r -> {
+          Map<String, Object> source = source(r.p(), r.uid());
+          require(str(source, "state").equals("ready"), 409, "UPLOAD_INCOMPLETE", "Finish the upload first.");
+          long total = (long) num(source, "bytes");
+          int offset = r.offset();
+          require(offset % SEGMENT == 0 && offset < total, 422, "VALIDATION", "Invalid download offset.");
+          byte[] chunk = readRange(source, offset / SEGMENT);
+          long end = offset + chunk.length;
+          source.remove("file_key");
+          return map(
+              "source", source,
+              "base64", Base64.getEncoder().encodeToString(chunk),
+              "offset", offset,
+              "next_offset", end,
+              "complete", end == total);
         });
 
     a.add(
@@ -125,7 +184,7 @@ final class Studio {
     a.add(
         "POST", "/api/studio/generate", "student", true,
         "{source_id,kind,instructions?}", "{artifact,ai_enabled}",
-        "NOT_FOUND,AI_NOT_CONFIGURED,UNSUPPORTED_AI_FILE",
+        "NOT_FOUND,AI_NOT_CONFIGURED,UNSUPPORTED_AI_FILE,AI_KEY_REJECTED,AI_RATE_LIMITED,AI_BUSY,AI_MODEL_UNAVAILABLE,AI_BLOCKED,AI_UNAVAILABLE",
         r -> {
           String kind =
               choice(
@@ -133,30 +192,26 @@ final class Studio {
                   "quiz", "slides", "transcript");
           Map<String, Object> source = source(text(r.body, "source_id", 36, 36), r.uid());
           require(str(source, "state").equals("ready"), 409, "UPLOAD_INCOMPLETE", "Finish the upload first.");
-          Path path = a.files.resolve(str(source, "file_key"));
+          byte[] file = readAll(source);
           String extension = extension(str(source, "filename"));
-          boolean audio = AUDIO.contains(extension) || str(source, "mime").startsWith("audio/");
+          boolean isText = str(source, "mime").startsWith("text/") || TEXT_FILES.contains(extension);
           String instructions = text(r.body, "instructions", 0, 1000);
           boolean usedAi = !apiKey.isBlank();
           String body;
-          if (audio) {
-            require(usedAi, 409, "AI_NOT_CONFIGURED", "Audio transcription needs a server AI key.");
-            String transcript = transcribe(path, source);
-            body = kind.equals("transcript") ? transcript : generateFromText(source, kind, instructions, transcript);
-          } else if (usedAi) {
+          if (usedAi) {
+            String mime = isText ? "text/plain" : GEMINI_MIME.get(extension);
             require(
-                FILE_INPUTS.contains(extension) || str(source, "mime").startsWith("text/"),
-                422, "UNSUPPORTED_AI_FILE",
-                "This file is stored safely, but its format is not supported for AI generation.");
-            body = generateWithFile(source, path, kind, instructions);
+                mime != null, 422, "UNSUPPORTED_AI_FILE",
+                "This file is stored safely, but the AI can't read this format. Save Word, PowerPoint or Excel files as PDF and upload that instead.");
+            require(
+                !kind.equals("transcript") || mime.startsWith("audio/") || mime.startsWith("video/"),
+                422, "UNSUPPORTED_AI_FILE", "Transcripts can only be made from audio or video files.");
+            body = generate(file, mime, kind, instructions);
           } else {
             require(
-                str(source, "mime").startsWith("text/") || Set.of("txt", "md", "csv", "json", "html", "xml", "java", "js", "ts", "py", "css", "sql").contains(extension),
-                409, "AI_NOT_CONFIGURED",
-                "This document needs the server AI key. Plain-text files can still use the local draft generator.");
-            String text = Files.readString(path, StandardCharsets.UTF_8);
-            body = localDraft(source, kind, text);
-            usedAi = false;
+                isText, 409, "AI_NOT_CONFIGURED",
+                "This file needs the server's Gemini key. Plain-text files can still use the local draft generator.");
+            body = localDraft(source, kind, new String(file, StandardCharsets.UTF_8));
           }
           String id = id(), title = artifactTitle(str(source, "title"), kind);
           d.insert(
@@ -192,6 +247,77 @@ final class Studio {
 
   Map<String, Object> artifact(String id, String uid) {
     return d.need("SELECT * FROM studio_artifacts WHERE id=? AND owner_id=?", id, uid);
+  }
+
+  long used(String uid) {
+    return (long) d.scalar("SELECT coalesce(sum(bytes),0) FROM studio_sources WHERE owner_id=?", uid);
+  }
+
+  // The associated data binds each segment to its file, position and end, so segments
+  // cannot be swapped between files, reordered or truncated without failing authentication.
+  static byte[] aad(String sourceId, long index, boolean last) {
+    return (sourceId + ":" + index + ":" + (last ? 1 : 0)).getBytes(StandardCharsets.UTF_8);
+  }
+
+  static javax.crypto.Cipher cipher(int mode, byte[] key, byte[] nonce) throws Exception {
+    javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+    c.init(mode, new javax.crypto.spec.SecretKeySpec(key, "AES"), new javax.crypto.spec.GCMParameterSpec(128, nonce));
+    return c;
+  }
+
+  void seal(Path plain, Path target, String sourceId) throws Exception {
+    long total = Files.size(plain), segments = Math.max(1, (total + SEGMENT - 1) / SEGMENT);
+    Path temp = target.resolveSibling(target.getFileName() + ".tmp");
+    try (InputStream in = Files.newInputStream(plain); OutputStream out = Files.newOutputStream(temp)) {
+      out.write(MAGIC);
+      for (long i = 0; i < segments; i++) {
+        byte[] chunk = in.readNBytes(SEGMENT), nonce = new byte[12];
+        RANDOM.nextBytes(nonce);
+        javax.crypto.Cipher c = cipher(javax.crypto.Cipher.ENCRYPT_MODE, a.key, nonce);
+        c.updateAAD(aad(sourceId, i, i == segments - 1));
+        out.write(nonce);
+        out.write(c.doFinal(chunk));
+      }
+    }
+    Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+  }
+
+  // Returns the plaintext of one SEGMENT-sized piece. Files stored before encryption was
+  // added (".bin") are read as they are.
+  byte[] readRange(Map<String, Object> source, long index) throws Exception {
+    Path path = a.files.resolve(str(source, "file_key"));
+    require(Files.exists(path), 404, "FILE_UNAVAILABLE", "This file is temporarily unavailable.");
+    long total = (long) num(source, "bytes"), segments = Math.max(1, (total + SEGMENT - 1) / SEGMENT);
+    require(index >= 0 && index < segments, 422, "VALIDATION", "Invalid download offset.");
+    int length = (int) Math.min(SEGMENT, total - index * SEGMENT);
+    try (java.nio.channels.SeekableByteChannel channel = Files.newByteChannel(path)) {
+      if (!str(source, "file_key").endsWith(".enc")) {
+        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(length);
+        channel.position(index * SEGMENT);
+        while (buffer.hasRemaining() && channel.read(buffer) > 0) {}
+        return buffer.array();
+      }
+      java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(12 + length + 16);
+      channel.position(MAGIC.length + index * (SEGMENT + 28L));
+      while (buffer.hasRemaining() && channel.read(buffer) > 0) {}
+      require(!buffer.hasRemaining(), 500, "FILE_DAMAGED", "This stored file is damaged.");
+      byte[] all = buffer.array();
+      javax.crypto.Cipher c =
+          cipher(javax.crypto.Cipher.DECRYPT_MODE, a.key, Arrays.copyOfRange(all, 0, 12));
+      c.updateAAD(aad(str(source, "id"), index, index == segments - 1));
+      try {
+        return c.doFinal(all, 12, all.length - 12);
+      } catch (javax.crypto.AEADBadTagException ex) {
+        throw new Fault(500, "FILE_DAMAGED", "This stored file failed its integrity check.");
+      }
+    }
+  }
+
+  byte[] readAll(Map<String, Object> source) throws Exception {
+    long total = (long) num(source, "bytes");
+    ByteArrayOutputStream out = new ByteArrayOutputStream((int) total);
+    for (long i = 0; i * SEGMENT < total; i++) out.write(readRange(source, i));
+    return out.toByteArray();
   }
 
   String safeFilename(String value) {
@@ -231,89 +357,94 @@ final class Studio {
         + (instructions.isBlank() ? "" : " Additional request: " + instructions);
   }
 
-  String generateWithFile(Map<String, Object> source, Path path, String kind, String instructions)
-      throws Exception {
-    byte[] bytes = Files.readAllBytes(path);
-    String data = "data:" + str(source, "mime") + ";base64," + Base64.getEncoder().encodeToString(bytes);
+  // One Gemini generateContent call: the file (or its text) plus the study-tool instructions.
+  String generate(byte[] file, String mime, String kind, String instructions) {
+    Object filePart =
+        mime.equals("text/plain")
+            ? map("text", "SOURCE:\n" + new String(file, StandardCharsets.UTF_8))
+            : map("inlineData", map("mimeType", mime, "data", Base64.getEncoder().encodeToString(file)));
     Map<String, Object> request =
         map(
-            "model", model,
-            "store", false,
-            "max_output_tokens", 6000,
-            "input",
-            List.of(
-                map(
-                    "role", "user",
-                    "content",
-                    List.of(
-                        map("type", "input_file", "filename", str(source, "filename"), "file_data", data),
-                        map("type", "input_text", "text", prompt(kind, instructions))))));
-    return responseText(postJson("https://api.openai.com/v1/responses", json(request)));
+            "contents",
+            List.of(map("role", "user", "parts", List.of(filePart, map("text", prompt(kind, instructions))))),
+            "generationConfig",
+            JSON_KINDS.contains(kind)
+                ? map("maxOutputTokens", 16000, "responseMimeType", "application/json")
+                : map("maxOutputTokens", 16000));
+    String body = json(request), used = model;
+    HttpResponse<String> response = send(geminiCall(model, body));
+    // A model under heavy demand answers 500/503 ("high demand"); retry once on the fallback
+    // model. Only the status is logged, never the request or key.
+    if ((response.statusCode() == 500 || response.statusCode() == 503) && !fallbackModel.equals(model)) {
+      System.err.println("ai_error status=" + response.statusCode() + " retrying_with=" + fallbackModel);
+      used = fallbackModel;
+      response = send(geminiCall(used, body));
+    }
+    if (response.statusCode() / 100 != 2) System.err.println("ai_error status=" + response.statusCode());
+    requireAiSuccess(response.statusCode(), response.body(), used);
+    String text = geminiText(obj(response.body()));
+    return JSON_KINDS.contains(kind) ? unfence(text) : text;
   }
 
-  String generateFromText(
-      Map<String, Object> source, String kind, String instructions, String sourceText) throws Exception {
-    Map<String, Object> request =
-        map(
-            "model", model,
-            "store", false,
-            "max_output_tokens", 6000,
-            "input",
-            prompt(kind, instructions) + "\n\nSOURCE: " + sourceText);
-    return responseText(postJson("https://api.openai.com/v1/responses", json(request)));
+  // The browser parses JSON tools strictly; drop a ```json … ``` wrapper if one slips through.
+  static String unfence(String text) {
+    String t = text.strip();
+    if (!t.startsWith("```")) return t;
+    int start = t.indexOf('\n'), end = t.lastIndexOf("```");
+    return start > 0 && end > start ? t.substring(start + 1, end).strip() : t;
   }
 
-  Map<String, Object> postJson(String url, String body) throws Exception {
-    HttpRequest request =
-        HttpRequest.newBuilder(URI.create(url))
-            .timeout(Duration.ofSeconds(120))
-            .header("Authorization", "Bearer " + apiKey)
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-            .build();
-    HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-    require(response.statusCode() / 100 == 2, 502, "AI_UNAVAILABLE", "The AI service could not complete this request.");
-    return obj(response.body());
+  HttpRequest geminiCall(String modelName, String body) {
+    return HttpRequest.newBuilder(URI.create(GEMINI_URL + modelName + ":generateContent"))
+        .timeout(Duration.ofSeconds(180))
+        .header("x-goog-api-key", apiKey)
+        .header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+        .build();
   }
 
-  String responseText(Map<String, Object> response) {
-    Object output = response.get("output");
-    if (output instanceof List<?> items)
-      for (Object item : items)
-        if (item instanceof Map<?, ?> message) {
-          Object content = message.get("content");
-          if (content instanceof List<?> parts)
-            for (Object part : parts)
-              if (part instanceof Map<?, ?> block && block.get("text") != null)
-                return block.get("text").toString().strip();
-        }
+  HttpResponse<String> send(HttpRequest request) {
+    try {
+      return http.send(request, HttpResponse.BodyHandlers.ofString());
+    } catch (IOException ex) {
+      throw new Fault(502, "AI_UNAVAILABLE", "The AI service could not be reached. Check the server's internet connection and try again.");
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      throw new Fault(503, "AI_UNAVAILABLE", "The AI request was interrupted. Try again.");
+    }
+  }
+
+  // Turns Gemini's status into a message the student (and the server owner) can act on.
+  // Gemini reports an invalid key as 400 with reason API_KEY_INVALID.
+  static void requireAiSuccess(int status, String body, String model) {
+    if (status / 100 == 2) return;
+    if (status == 401 || status == 403 || (status == 400 && body.contains("API_KEY_INVALID")))
+      throw new Fault(502, "AI_KEY_REJECTED", "The server's Gemini key was rejected. Ask the server owner to check GEMINI_API_KEY.");
+    if (status == 429)
+      throw new Fault(503, "AI_RATE_LIMITED", "The AI service is busy or today's free limit was reached. Try again later.");
+    if (status == 500 || status == 503)
+      throw new Fault(503, "AI_BUSY", "Gemini is very busy right now. Try again in a minute.");
+    if (status == 404)
+      throw new Fault(502, "AI_MODEL_UNAVAILABLE", "The Gemini model \"" + model + "\" isn't available to this key. Ask the server owner to set GEMINI_MODEL.");
+    throw new Fault(502, "AI_UNAVAILABLE", "The AI service could not complete this request.");
+  }
+
+  // Joins the answer's text parts, skipping thought summaries. A blocked or empty answer
+  // becomes a clear error instead of an empty study tool.
+  static String geminiText(Map<String, Object> response) {
+    StringBuilder out = new StringBuilder();
+    if (response.get("candidates") instanceof List<?> candidates
+        && !candidates.isEmpty()
+        && candidates.get(0) instanceof Map<?, ?> candidate
+        && candidate.get("content") instanceof Map<?, ?> content
+        && content.get("parts") instanceof List<?> parts)
+      for (Object part : parts)
+        if (part instanceof Map<?, ?> block && block.get("text") != null && !Boolean.TRUE.equals(block.get("thought")))
+          out.append(block.get("text"));
+    if (!out.isEmpty()) return out.toString().strip();
+    if (response.get("promptFeedback") instanceof Map<?, ?> feedback && feedback.get("blockReason") != null)
+      throw new Fault(422, "AI_BLOCKED", "The AI declined to process this file. Try a different source.");
     throw new Fault(502, "AI_UNAVAILABLE", "The AI service returned no usable content.");
-  }
-
-  String transcribe(Path path, Map<String, Object> source) throws Exception {
-    String boundary = "----StudyArena" + UUID.randomUUID();
-    ByteArrayOutputStream out = new ByteArrayOutputStream();
-    part(out, boundary, "model", "gpt-transcribe");
-    out.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\""
-            + safeFilename(str(source, "filename")) + "\"\r\nContent-Type: " + str(source, "mime")
-            + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-    out.write(Files.readAllBytes(path));
-    out.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-    HttpRequest request =
-        HttpRequest.newBuilder(URI.create("https://api.openai.com/v1/audio/transcriptions"))
-            .timeout(Duration.ofSeconds(180))
-            .header("Authorization", "Bearer " + apiKey)
-            .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-            .POST(HttpRequest.BodyPublishers.ofByteArray(out.toByteArray()))
-            .build();
-    HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-    require(response.statusCode() / 100 == 2, 502, "AI_UNAVAILABLE", "Audio transcription could not be completed.");
-    return text(obj(response.body()), "text", 1, 2_000_000);
-  }
-
-  void part(ByteArrayOutputStream out, String boundary, String name, String value) throws IOException {
-    out.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + name
-            + "\"\r\n\r\n" + value + "\r\n").getBytes(StandardCharsets.UTF_8));
   }
 
   String localDraft(Map<String, Object> source, String kind, String input) {

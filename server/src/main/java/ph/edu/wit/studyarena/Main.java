@@ -468,7 +468,7 @@ public final class Main {
           List.of(
               new Object[] {"hat-leaf", "Little leaf hat", "hat", 10, "leaf"},
               new Object[] {"border-sage", "Sage profile border", "border", 15, "sage"},
-              new Object[] {"theme-night", "Moonlit theme", "theme", 20, "dark"},
+              new Object[] {"theme-night", "Cosmos theme", "theme", 20, "cosmos"},
               new Object[] {"skin-fox", "Study fox", "skin", 25, "fox"},
               new Object[] {"streak-freeze", "Streak freeze", "freeze", 30, "freeze"}))
         d.insert(
@@ -501,6 +501,19 @@ public final class Main {
               "value",
               "physical study kit"));
     }
+    // The old "Moonlit" item sold dark mode, which is free in Settings; it becomes the Cosmos
+    // theme in place, so students who bought it keep an item under the same id.
+    d.exec(
+        "UPDATE catalog SET title='Cosmos theme',value='cosmos' WHERE id='theme-night' AND value='dark'");
+    // Cosmetics added after first release; INSERT OR IGNORE keeps any admin stock/active edits.
+    for (Object[] row :
+        List.of(
+            new Object[] {"theme-sepia", "Warm paper theme", "theme", 20, "sepia"},
+            new Object[] {"effect-confetti", "Gentle confetti", "effect", 15, "confetti"},
+            new Object[] {"effect-sparkles", "Sparkle burst", "effect", 15, "sparkles"}))
+      d.exec(
+          "INSERT OR IGNORE INTO catalog(id,title,kind,price,value) VALUES(?,?,?,?,?)",
+          row[0], row[1], row[2], row[3], row[4]);
     d.exec(
         "INSERT OR IGNORE INTO seasons VALUES(?,?,?,?)",
         "pilot",
@@ -625,6 +638,16 @@ public final class Main {
             + " state='archived')",
         t - 365 * 86400);
     d.exec("DELETE FROM notifications WHERE created<?", t - 90 * 86400);
+    // Abandoned Studio uploads: remove the unencrypted partial file and free the quota.
+    for (Map<String, Object> stale :
+        d.all("SELECT id FROM studio_sources WHERE state='uploading' AND created<?", t - 86400)) {
+      try {
+        Files.deleteIfExists(a.files.resolve("studio-" + str(stale, "id") + ".partial"));
+      } catch (Exception ex) {
+        throw new IllegalStateException(ex);
+      }
+      d.exec("DELETE FROM studio_sources WHERE id=?", stale.get("id"));
+    }
     d.exec("DELETE FROM outbox WHERE delivered IS NOT NULL AND delivered<?", t - 86400);
     d.exec("DELETE FROM risk_events WHERE resolved=1 AND created<?", t - 365 * 86400);
     for (Map<String, Object> user :

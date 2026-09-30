@@ -118,6 +118,86 @@ public final class DomainTests {
       }
       check(rejected, "DB05 foreign key enforced");
     }
+    java.nio.file.Path legacy = java.nio.file.Files.createTempFile("arena-legacy-", ".db");
+    try {
+      try (Db db = new Db(legacy.toString())) {
+        db.schema();
+        // Recreate the catalog as released before the 'effect' kind existed.
+        db.exec("PRAGMA foreign_keys=OFF");
+        db.exec(
+            "CREATE TABLE catalog_old (id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL"
+                + " CHECK(kind IN ('skin','border','hat','theme','content','freeze','prize')),"
+                + " price INTEGER NOT NULL CHECK(price>=0), stock INTEGER CHECK(stock>=0), adult_only"
+                + " INTEGER NOT NULL DEFAULT 0, rules TEXT NOT NULL DEFAULT '', rules_version INTEGER NOT"
+                + " NULL DEFAULT 1, sponsor TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1,"
+                + " value TEXT NOT NULL DEFAULT '')");
+        db.exec("DROP TABLE catalog");
+        db.exec("ALTER TABLE catalog_old RENAME TO catalog");
+        db.exec("PRAGMA foreign_keys=ON");
+        db.insert("users", map("id", "u", "email", "u@test.edu", "password_hash", password,
+            "school_hash", "school", "school_cipher", cipher, "display_name", "Synthetic student",
+            "age_band", "adult", "created", now()));
+        db.insert("catalog", map("id", "hat", "title", "Hat", "kind", "hat", "price", 1, "value", "leaf"));
+        db.insert("inventory", map("user_id", "u", "item_id", "hat", "acquired", now()));
+      }
+      try (Db db = new Db(legacy.toString())) {
+        db.schema();
+        check(
+            str(db.one("SELECT sql FROM sqlite_master WHERE name='catalog'"), "sql").contains("'effect'"),
+            "DB06 legacy catalog upgraded to allow effect items");
+        db.insert("catalog", map("id", "fx", "title", "Confetti", "kind", "effect", "price", 1, "value", "confetti"));
+        check(
+            db.one("SELECT * FROM inventory WHERE user_id='u' AND item_id='hat'") != null,
+            "DB07 owned items survive the catalog upgrade");
+        rejected = false;
+        try {
+          db.insert("inventory", map("user_id", "u", "item_id", "missing", "acquired", now()));
+        } catch (Exception e) {
+          rejected = true;
+        }
+        check(rejected, "DB08 inventory foreign key still enforced after upgrade");
+      }
+    } finally {
+      for (String suffix : List.of("", "-wal", "-shm"))
+        java.nio.file.Files.deleteIfExists(java.nio.file.Path.of(legacy + suffix));
+    }
+    check(
+        Studio.geminiText(obj("{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"plan\",\"thought\":true},"
+            + "{\"text\":\"# Reviewer\"},{\"text\":\"\\n- key idea\"}]}}]}")).equals("# Reviewer\n- key idea"),
+        "AI01 Gemini answer text joined without thought summaries");
+    String code = "";
+    try {
+      Studio.geminiText(obj("{\"promptFeedback\":{\"blockReason\":\"SAFETY\"}}"));
+    } catch (Fault f) {
+      code = f.code;
+    }
+    check(code.equals("AI_BLOCKED"), "AI02 blocked Gemini answer becomes a clear error, not an empty tool");
+    Map<Integer, String> expected = new LinkedHashMap<>();
+    expected.put(403, "AI_KEY_REJECTED");
+    expected.put(429, "AI_RATE_LIMITED");
+    expected.put(404, "AI_MODEL_UNAVAILABLE");
+    expected.put(503, "AI_BUSY");
+    expected.put(502, "AI_UNAVAILABLE");
+    for (var entry : expected.entrySet()) {
+      code = "";
+      try {
+        Studio.requireAiSuccess(entry.getKey(), "{}", "gemini-test");
+      } catch (Fault f) {
+        code = f.code;
+      }
+      check(code.equals(entry.getValue()), "AI03 Gemini HTTP " + entry.getKey() + " maps to " + entry.getValue());
+    }
+    code = "";
+    try {
+      Studio.requireAiSuccess(400, "{\"error\":{\"details\":[{\"reason\":\"API_KEY_INVALID\"}]}}", "gemini-test");
+    } catch (Fault f) {
+      code = f.code;
+    }
+    check(code.equals("AI_KEY_REJECTED"), "AI04 Gemini invalid-key 400 is reported as a rejected key");
+    check(
+        Studio.unfence("```json\n[{\"front\":\"a\"}]\n```").equals("[{\"front\":\"a\"}]")
+            && Studio.unfence("[1]").equals("[1]"),
+        "AI05 fenced JSON study tools are unwrapped; plain JSON is untouched");
     System.out.println(passed + " domain/security assertions passed.");
   }
 }

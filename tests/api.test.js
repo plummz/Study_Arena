@@ -1,6 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { server } from "./server.mjs";
 let app, student, teacher, admin, other, minor, privateDeck, room;
@@ -147,6 +148,48 @@ test("S01 private sources accept arbitrary files; text creates grounded tools", 
   assert.equal(generated.artifact.ai, 0);
   assert.ok(JSON.parse(generated.artifact.body).length >= 2);
   await api(`/api/studio/artifacts/${generated.artifact.id}`, { token: other.token, status: 404 });
+});
+test("S02 private folder files are encrypted at rest, download intact, and stay owner-only", async () => {
+  // 1.5 MiB of synthetic bytes spans two encrypted segments; the marker must not appear on disk.
+  const marker = Buffer.from("SYNTHETIC-PRIVATE-NOTE-MARKER"),
+    bytes = Buffer.alloc(1536 * 1024);
+  for (let i = 0; i < bytes.length; i += marker.length) marker.copy(bytes, i);
+  const digest = Buffer.from(await crypto.subtle.digest("SHA-256", bytes)).toString("hex");
+  const created = await api("/api/studio/sources", { token: student.token, method: "POST", body: { title: "Folder file", filename: "notes.bin", mime: "application/octet-stream", bytes: bytes.length, sha256: digest } });
+  const id = created.source.id, chunk = 512 * 1024;
+  for (let offset = 0; offset < bytes.length; offset += chunk)
+    await api(`/api/studio/sources/${id}/chunks`, { token: student.token, method: "POST", body: { offset, base64: bytes.subarray(offset, offset + chunk).toString("base64"), complete: offset + chunk >= bytes.length } });
+  const stored = await readFile(path.join(app.dir, "files", `studio-${id}.enc`));
+  assert.equal(stored.subarray(0, 4).toString(), "SAF1");
+  assert.equal(stored.includes(marker), false);
+  const parts = [];
+  let offset = 0, complete = false;
+  while (!complete) {
+    const piece = await api(`/api/studio/sources/${id}/file?offset=${offset}`, { token: student.token });
+    assert.equal(piece.source.file_key, undefined);
+    parts.push(Buffer.from(piece.base64, "base64"));
+    offset = piece.next_offset;
+    complete = piece.complete;
+  }
+  assert.equal(parts.length, 2);
+  assert.ok(Buffer.concat(parts).equals(bytes));
+  await api(`/api/studio/sources/${id}/file?offset=0`, { token: other.token, status: 404 });
+  await api(`/api/studio/sources/${id}/file?offset=7`, { token: student.token, status: 422 });
+  assert.equal((await api("/api/studio", { token: other.token })).sources.some((s) => s.id === id), false);
+  await api(`/api/studio/sources/${id}`, { token: other.token, method: "DELETE", body: {}, status: 404 });
+  await api(`/api/studio/sources/${id}`, { token: student.token, method: "DELETE", body: {} });
+  await api(`/api/studio/sources/${id}/file?offset=0`, { token: student.token, status: 404 });
+});
+test("S03 private folder quota is 250 MB per student", async () => {
+  const account = await register("folder"), max = 25 * 1024 * 1024, ids = [];
+  const declare = (status = 200) =>
+    api("/api/studio/sources", { token: account.token, method: "POST", status, body: { title: "Big", filename: "big.pdf", mime: "application/pdf", bytes: max, sha256: "a".repeat(64) } });
+  for (let i = 0; i < 10; i++) ids.push((await declare()).source.id);
+  const studio = await api("/api/studio", { token: account.token });
+  assert.equal(studio.used_bytes, studio.quota_bytes);
+  assert.equal((await declare(413)).error.code, "QUOTA");
+  await api(`/api/studio/sources/${ids[0]}`, { token: account.token, method: "DELETE", body: {} });
+  await declare();
 });
 test("C01 empty deck supported; no 501st card; Unicode preserved", async () => {
   const x = await api("/api/decks", {
@@ -517,6 +560,27 @@ test("J04 compensation cannot create negative balances", async () => {
     status: 409,
   });
   assert.equal(result.error.code, "NEGATIVE_BALANCE");
+});
+test("J05 fixed-price theme and celebration effects are bought, equipped and never over-spent", async () => {
+  const account = await register("styler");
+  await api("/api/admin/ledger", { token: admin.token, method: "POST", body: { user_id: account.user.id, xp: 0, coins: 40, origin: uid(), reason: "Integration fixture funding" } });
+  const shop = await api("/api/shop", { token: account.token });
+  const price = (id) => shop.items.find((item) => item.id === id);
+  assert.deepEqual(["theme-sepia", "effect-confetti", "effect-sparkles"].map((id) => [price(id).kind, price(id).price, price(id).stock]),
+    [["theme", 20, null], ["effect", 15, null], ["effect", 15, null]]);
+  // The former "Moonlit" item (dark mode, which Settings gives free) is now the Cosmos theme.
+  assert.deepEqual([price("theme-night").title, price("theme-night").value], ["Cosmos theme", "cosmos"]);
+  assert.equal(shop.items.some((item) => item.kind === "theme" && item.value === "dark"), false);
+  assert.equal((await api("/api/shop/effect-confetti/purchase", { token: account.token, method: "POST", body: {} })).wallet.coins, 25);
+  await api("/api/inventory/effect-confetti/equip", { token: account.token, method: "POST", body: {} });
+  assert.equal((await api("/api/shop/theme-sepia/purchase", { token: account.token, method: "POST", body: {} })).wallet.coins, 5);
+  await api("/api/inventory/theme-sepia/equip", { token: account.token, method: "POST", body: {} });
+  const denied = await api("/api/shop/effect-sparkles/purchase", { token: account.token, method: "POST", body: {}, status: 409 });
+  assert.equal(denied.error.code, "INSUFFICIENT_FUNDS");
+  const inventory = (await api("/api/shop", { token: account.token })).inventory;
+  assert.deepEqual(inventory.filter((i) => i.equipped).map((i) => i.item_id).sort(), ["effect-confetti", "theme-sepia"]);
+  const item = await api("/api/admin/catalog", { token: admin.token, method: "POST", body: { title: "Soft stars", kind: "effect", price: 12, stock: 5, adult_only: false, rules: "", rules_version: 1, sponsor: "", value: "sparkles", reason: "Synthetic effect catalog test" } });
+  assert.equal(item.item.kind, "effect");
 });
 test("G01 invite secrecy, join, ownership deletion guard, member removal", async () => {
   const created = await api("/api/rooms", {

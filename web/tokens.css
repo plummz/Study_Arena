@@ -2,12 +2,13 @@
   --bg: #f7f6f0;
   --card: #fffefa;
   --ink: #263d33;
-  --muted: #647069;
+  --muted: #5f6b64;
   --sage: #345e46;
   --on-sage: #ffffff;
   --soft: #eaf0e3;
   --soft-border: #d9e3cf;
   --line: #e4e6dc;
+  --field-border: #8a978c;
   --peach: #f6e5cd;
   --input: #fffefa;
   --danger: #a13932;
@@ -25,10 +26,68 @@
   --soft: #2b4033;
   --soft-border: #40533f;
   --line: #405047;
+  --field-border: #7d9185;
   --peach: #524432;
   --input: #1c2d25;
   --danger: #ffa99f;
   --error-bg: #492e2b;
   --focus: #edc383;
   color-scheme: dark;
+}
+/* Warm paper: a sepia reading theme sold in Rewards. */
+:root[data-theme="sepia"] {
+  --bg: #f3ead7;
+  --card: #fbf5e8;
+  --ink: #3a2c1e;
+  --muted: #62503c;
+  --sage: #6e4a24;
+  --on-sage: #ffffff;
+  --soft: #ebdfc5;
+  --soft-border: #dccaa4;
+  --line: #e2d4b6;
+  --field-border: #9c8563;
+  --peach: #f0d6b0;
+  --input: #fffaf0;
+  --danger: #9a2d1f;
+  --error-bg: #f7e0d6;
+  --focus: #1f5f8b;
+  color-scheme: light;
+}
+/* Cosmos: a deep-space dark theme sold in Rewards; the starfield lives in style.css. */
+:root[data-theme="cosmos"] {
+  --bg: #0b0e2a;
+  --card: #161a3d;
+  --ink: #eef0ff;
+  --muted: #b8bde8;
+  --sage: #c8b6ff;
+  --on-sage: #1b1442;
+  --soft: #222757;
+  --soft-border: #393f7a;
+  --line: #313770;
+  --field-border: #868cc6;
+  --peach: #3b2d5e;
+  --input: #11153a;
+  --danger: #ffa3b4;
+  --error-bg: #4a2238;
+  --focus: #ffd479;
+  color-scheme: dark;
+}
+/* High contrast: an accessibility setting, always free in Settings. */
+:root[data-theme="contrast"] {
+  --bg: #ffffff;
+  --card: #ffffff;
+  --ink: #000000;
+  --muted: #2b2b2b;
+  --sage: #004d2c;
+  --on-sage: #ffffff;
+  --soft: #eef5ef;
+  --soft-border: #1f1f1f;
+  --line: #595959;
+  --field-border: #000000;
+  --peach: #fff0cc;
+  --input: #ffffff;
+  --danger: #8a0000;
+  --error-bg: #fff0f0;
+  --focus: #0038c7;
+  color-scheme: light;
 }

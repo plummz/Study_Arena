@@ -95,6 +95,31 @@ const title = (eyebrow, heading, sub, action = "") =>
   `<div class="page-title"><div><div class="eyebrow">${h(eyebrow)}</div><h1>${h(heading)}</h1><p>${h(sub)}</p></div>${action}</div>`;
 const progressBar = (value, label) =>
   `<progress max="100" value="${Math.max(0, Math.min(100, value || 0))}" aria-label="${h(label)}">${Math.round(value || 0)}%</progress>`;
+// Light, dark and high contrast are free display settings (high contrast is an accessibility
+// need, so it is never sold). Other themes are fixed-price cosmetics from Rewards.
+const THEMES = { light: "Light", dark: "Dark", contrast: "High contrast", sepia: "Warm paper", cosmos: "Cosmos" },
+  FREE_THEMES = ["light", "dark", "contrast"];
+function applyTheme(name) {
+  document.documentElement.dataset.theme = THEMES[name] ? name : "light";
+}
+function themePicker() {
+  const current = document.documentElement.dataset.theme || "light",
+    owned = vault?.data.ownedThemes || [],
+    choices = Object.keys(THEMES).filter((t) => FREE_THEMES.includes(t) || owned.includes(t) || t === current);
+  return form(
+    "theme",
+    `${select("Display theme", "theme", choices.map((value) => ({ value, label: THEMES[value] })), current)}<p class="caption">Light, dark and high contrast are always free. Other looks can be earned in Rewards.</p><button type="submit" class="small">Apply theme</button>`,
+    async (f) => {
+      const theme = f.get("theme");
+      applyTheme(theme);
+      if (vault) {
+        vault.data.theme = theme;
+        await vault.save();
+      }
+      toast(`${THEMES[theme] || "Light"} theme on.`);
+    },
+  );
+}
 const companions = [
   { id: "moss", name: "Moss", color: "Olive", note: "A steady reader who makes quiet progress feel important.", voice: { wave: "Slow and steady—I’m right here with my book.", think: "Let’s pause, breathe, and remember one piece at a time.", celebrate: "A quiet little victory. Well done.", encourage: "No worry. Every reread grows a stronger memory.", focus: "Pages open, distractions down. Let’s settle in." }, motions: { idle: "breathe", wave: "walk", think: "nod", celebrate: "hop", encourage: "nod", focus: "breathe" }, play: [["walk", "A short walk helps me think."], ["nod", "One small step still counts."], ["shake", "Shake off the distraction, gently."]] },
   { id: "lumi", name: "Lumi", color: "Golden", note: "A warm book buddy who celebrates patient learning.", voice: { wave: "Hi, study star! Shall we read together?", think: "We can give this question a warm, careful look.", celebrate: "Lovely work! I knew that answer was glowing in you.", encourage: "That answer needs another look, and that is completely okay.", focus: "I’ll keep the study light warm while you focus." }, motions: { idle: "sway", wave: "sway", think: "wiggle", celebrate: "twirl", encourage: "sway", focus: "breathe" }, play: [["sway", "A tiny sway and we’re ready!"], ["twirl", "A golden twirl just for you."], ["wiggle", "Book-buddy wiggle!"]] },
@@ -144,7 +169,23 @@ function companionLevel(id = companionState().selected) {
 function companionSprite(companion, cls = "") {
   return `<img class="companion-sprite ${cls}" src="${assetUrl(`./assets/companions/${companion.id}.png`)}" alt="" aria-hidden="true">`;
 }
+const CELEBRATION_EFFECTS = { confetti: 36, sparkles: 16 };
+// Plays the celebration effect the student bought in Rewards. Purely decorative: the CSS
+// hides it under prefers-reduced-motion and the companion "Still" setting.
+function playCelebration() {
+  const effect = vault?.data.equipped?.effect,
+    count = CELEBRATION_EFFECTS[effect];
+  if (!count) return;
+  document.querySelector(".celebration-layer")?.remove();
+  const layer = document.createElement("div");
+  layer.className = `celebration-layer celebration-${effect}`;
+  layer.setAttribute("aria-hidden", "true");
+  layer.innerHTML = Array.from({ length: count }, (_, i) => `<i style="--i:${i};--n:${count}"></i>`).join("");
+  document.body.append(layer);
+  setTimeout(() => layer.remove(), 2600);
+}
 function companionReact(mood = "wave", message = "", movement = "") {
+  if (mood === "celebrate") playCelebration();
   const dock = $("#companion-dock"),
     bubble = $("#companion-bubble");
   if (!dock || !bubble) return;
@@ -513,18 +554,18 @@ async function authPage(mode = "login") {
                 );
               vault = opened;
               user = online?.user || vault.data.user;
+              const milestones = online?.login_streak?.new_milestones || [];
               if (online) {
                 vault.data.token = online.token;
                 vault.data.user = user;
                 vault.data.loginStreak = online.login_streak;
-                if (online.login_streak?.new_milestones?.length)
-                  toast(`Login streak reward unlocked: ${online.login_streak.new_milestones.join(", ")} days!`);
+                if (milestones.length)
+                  toast(`Login streak reward unlocked: ${milestones.join(", ")} days!`);
               }
               client = new Client(vault);
               localStorage.setItem("last-email", email);
               await vault.save();
-              document.documentElement.dataset.theme =
-                vault.data.theme || "light";
+              applyTheme(vault.data.theme);
               if (
                 localStorage.getItem("guest-result") &&
                 !vault.data.guestMigrated
@@ -543,14 +584,17 @@ async function authPage(mode = "login") {
               await vault.save();
               if (!user.course) await go("onboarding");
               else await go("home");
-              companionReact("wave", `Welcome back! ${companionById(companionState().selected).name} is ready to study.`);
+              if (milestones.length)
+                companionReact("celebrate", `${milestones.at(-1)} days together! A new streak gift is waiting in Rewards.`);
+              else
+                companionReact("wave", `Welcome back! ${companionById(companionState().selected).name} is ready to study.`);
             },
         );
   const hostedNotice = !API_CONFIGURED
     ? `<div class="banner" role="status"><strong>Guest preview</strong><p>${h(API_UNAVAILABLE_MESSAGE)}</p></div>`
     : "";
   $("#app").innerHTML =
-    `<div class="auth"><a class="brand" href="#home"><img src="${assetUrl("./icon.svg")}" alt=""><span>study arena<small>Your own pace</small></span></a><div class="card"><div class="eyebrow">A calm place to grow</div><h1>${mode === "register" ? "Make room for learning." : mode === "reset" ? "Let’s get you back in." : "Welcome to your study space."}</h1><p>One topic, one small step, one good study day.</p>${hostedNotice}<div id="auth-error"></div>${body}<div class="divider"></div><div class="actions">${button(mode === "register" ? "Already registered? Sign in" : "Create an account", () => authPage(mode === "register" ? "login" : "register"), "subtle small")}${button("Forgot password", () => authPage("reset"), "subtle small")}${button("Explore as a guest", () => go("home"), "subtle small")}</div>${health.demo ? `<div class="banner spaced">Synthetic demo accounts: student@study.test, teacher@study.test, admin@study.test. Password: StudyArena!2026. ${button("Open demo email inbox", demoMail, "small")}</div>` : ""}</div></div>`;
+    `<main id="main" class="auth-screen" tabindex="-1"><div class="auth"><a class="brand" href="#home"><img src="${assetUrl("./icon.svg")}" alt=""><span>study arena<small>Your own pace</small></span></a><div class="card"><div class="eyebrow">A calm place to grow</div><h1>${mode === "register" ? "Make room for learning." : mode === "reset" ? "Let’s get you back in." : "Welcome to your study space."}</h1><p>One topic, one small step, one good study day.</p>${hostedNotice}<div id="auth-error"></div>${body}<div class="divider"></div><div class="actions">${button(mode === "register" ? "Already registered? Sign in" : "Create an account", () => authPage(mode === "register" ? "login" : "register"), "subtle small")}${button("Forgot password", () => authPage("reset"), "subtle small")}${button("Explore as a guest", () => go("home"), "subtle small")}</div>${health.demo ? `<div class="banner spaced">Synthetic demo accounts: student@study.test, teacher@study.test, admin@study.test. Password: StudyArena!2026. ${button("Open demo email inbox", demoMail, "small")}</div>` : ""}</div></div></main>`;
 }
 async function demoMail() {
   const email = prompt(
@@ -582,6 +626,40 @@ async function privacy() {
     `<p>Study Arena stores your email, password hash, encrypted school ID, age group, chosen profile, study activity, shared content and reward records. Your own study logs and notes are private. Teachers see aggregate cohort totals only when at least five students are active.</p><p>Your device cache uses AES-GCM encryption unlocked by your password. The institution must approve its hosting region, privacy notice and data processing basis before a real pilot. Minors need the school’s approved consent process.</p><p>Deletion revokes access immediately, queues primary-data deletion after 30 days, and preserves minimized accounting/safety records under school policy. Export your records from Settings. Optional competition, prizes and notifications can remain off.</p><p>Contact your institution’s designated privacy officer to request access, correction, an objection or a complaint. This demo contains synthetic users and original example content.</p>`,
   );
 }
+// A private note to self, kept only in this device's encrypted workspace (never sent to
+// the server or shown to anyone else).
+function homeNote() {
+  return vault?.data.homeNote || { text: "", show: true };
+}
+async function editHomeNote() {
+  const note = homeNote();
+  await modal(
+    "Note to self",
+    form(
+      "homeNote",
+      `${area("Your note", "text", note.text, 'maxlength="500" rows="5" placeholder="e.g. Chemistry lab report due Friday — bring goggles."')}${check("Show on my Home screen", "show", note.show !== false)}<p class="caption">Private to you and saved only on this device, encrypted with your password. Leave it empty to remove it.</p><button type="submit" class="primary">Save note</button>`,
+      async (f) => {
+        const text = String(f.get("text") || "").trim().slice(0, 500);
+        if (text) vault.data.homeNote = { text, show: f.has("show"), updated: Date.now() };
+        else delete vault.data.homeNote;
+        await vault.save();
+        $("#dialog").close();
+        toast(text ? "Note saved." : "Note removed.");
+        await go("home");
+      },
+    ),
+  );
+}
+// The last wallet the server confirmed (Client.request records it from any fresh response),
+// so Home, Rewards and Progress always show the same balance.
+function walletView(fallback = { xp: 0, coins: 0 }) {
+  return vault?.data.wallet || fallback;
+}
+// Give queued coin-earning work a short chance to reach the server before showing a balance.
+async function settleSync(ms = 4000) {
+  if (!vault?.data.pending.some((op) => !op.error) || !navigator.onLine) return;
+  await Promise.race([client.sync().catch(() => {}), new Promise((ok) => setTimeout(ok, ms))]);
+}
 const views = {};
 views.companions = companionsView;
 views.home = async () => {
@@ -592,14 +670,23 @@ views.home = async () => {
     streak: 0,
     topics: [],
   };
-  if (user) progress = await load("/api/progress");
+  if (user) {
+    await settleSync();
+    progress = await load("/api/progress");
+  }
+  const wallet = user ? walletView(progress.wallet) : progress.wallet,
+    unsynced = vault?.data.pending.filter((op) => !op.error).length || 0;
   const decks = (await load("/api/decks")).items.slice(0, 3),
     goal = user?.daily_goal || 25,
     loginStreak = vault?.data.loginStreak?.current || 0,
     weak = progress.topics?.[0],
     remaining = Math.max(5, Math.round(goal - progress.today_minutes));
   const heroArt = `<svg class="hero-art" viewBox="0 0 200 170" role="img" aria-label="A book beside a growing plant"><ellipse cx="98" cy="151" rx="81" ry="10" fill="#d8e3cc"/><path d="M20 85q33-14 69 7 35-21 72-7v63q-36-12-72 3-35-15-69-3Z" fill="#fffdf1" stroke="#658265" stroke-width="2"/><path d="M89 94v56M34 102l39 4M34 115l39 3M104 104l40-4M104 117l40-3" fill="none" stroke="#a0ad8d" stroke-width="3"/><path d="M146 70h31l-5 30h-22Z" fill="#cc9c74"/><path d="M161 71V29" stroke="#52774e" stroke-width="3"/><path d="M160 47q-26-1-24-22 21 1 24 22M162 57q24 0 24-23-24 0-24 23" fill="#769663"/><circle cx="35" cy="35" r="17" fill="#efddac"/></svg>`;
-  return `${title("My study space", `A little progress, ${user ? user.display_name.split(" ")[0] : "every day"}.`, "There’s no race here. Just a little room to learn.")}<section class="hero"><div><div class="eyebrow">Your next quiet moment</div><h2>Settle in. Pick one thing.<br>Let the rest wait.</h2><p>A short focus session is a good place to start. Your pace is the right pace.</p>${button("Start a focus session  ↗", () => (user ? go("focus") : authPage()), "primary")}${user && Object.keys(vault.data.attempts).length ? button("Resume saved quiz", () => go("quiz", { id: Object.keys(vault.data.attempts)[0] }), "small subtle") : ""}</div>${heroArt}</section><div class="grid stats"><div class="card stat"><label>Today’s focus</label><strong>${Math.round(progress.today_minutes)} <span class="caption">/ ${goal} min</span></strong>${progressBar((progress.today_minutes / goal) * 100, "Daily study goal")}<small>Your goal, your choice</small></div><div class="card stat"><label>Login streak</label><strong>${loginStreak} <span class="caption">days</span></strong><small>Free companion rewards at 3, 7, 14 and 30</small></div><div class="card stat"><label>Study coins</label><strong>${progress.wallet.coins} <span class="caption">✦</span></strong><small>Earned one small step at a time</small></div></div>${user ? `<section class="card section daily-plan"><div class="section-header"><div><div class="eyebrow">Today’s gentle plan</div><h2>Three useful next steps</h2></div><span class="pill">About ${Math.min(45, remaining + 15)} min</span></div><div class="grid"><article><strong>1 · Review</strong><p>${h(weak?.title || "A due flashcard deck")}</p>${button("Open review", () => go("library"), "small")}</article><article><strong>2 · Make meaning</strong><p>Turn one source into a reviewer or quiz.</p>${button("Open AI Studio", () => go("studio"), "small")}</article><article><strong>3 · Focus</strong><p>${remaining} quiet minutes toward today’s goal.</p>${button("Start timer", () => go("focus"), "small primary")}</article></div></section>` : ""}<div class="split section"><section><div class="section-header"><h2>Something to get you started</h2>${button("Browse all ↗", () => go("library"), "subtle small")}</div><div class="stack">${decks.map((deck, i) => `<div class="card row"><div><div class="eyebrow">${h(topics.find((t) => t.id === deck.topic_id)?.subject)}</div><h3>${h(deck.title)}</h3><span class="muted caption">${deck.card_count} flashcards · a few good minutes</span></div>${button("Study →", () => go("deck", { id: deck.id }), "small")}</div>`).join("")}</div></section><section><div class="section-header"><h2>A little extra care</h2></div><div class="card">${
+  const note = homeNote(),
+    noteCard = user && note.text && note.show !== false
+      ? `<section class="card home-note" aria-labelledby="home-note-title"><div class="row"><h2 id="home-note-title" class="eyebrow">Note to self</h2>${button("Edit note", editHomeNote, "small subtle")}</div><p class="home-note-text">${h(note.text)}</p></section>`
+      : "";
+  return `${title("My study space", `A little progress, ${user ? user.display_name.split(" ")[0] : "every day"}.`, "There’s no race here. Just a little room to learn.", user ? button(note.text ? (note.show === false ? "Show note to self" : "Edit note to self") : "Add a note to self", editHomeNote, "small subtle") : "")}${noteCard}<section class="hero"><div><div class="eyebrow">Your next quiet moment</div><h2>Settle in. Pick one thing.<br>Let the rest wait.</h2><p>A short focus session is a good place to start. Your pace is the right pace.</p>${button("Start a focus session  ↗", () => (user ? go("focus") : authPage()), "primary")}${user && Object.keys(vault.data.attempts).length ? button("Resume saved quiz", () => go("quiz", { id: Object.keys(vault.data.attempts)[0] }), "small subtle") : ""}</div>${heroArt}</section><div class="grid stats"><div class="card stat"><label>Today’s focus</label><strong>${Math.round(progress.today_minutes)} <span class="caption">/ ${goal} min</span></strong>${progressBar((progress.today_minutes / goal) * 100, "Daily study goal")}<small>Your goal, your choice</small></div><div class="card stat"><label>Login streak</label><strong>${loginStreak} <span class="caption">days</span></strong><small>Free companion rewards at 3, 7, 14 and 30</small></div><div class="card stat"><label>Study coins</label><strong id="home-coins">${wallet.coins} <span class="caption">✦</span></strong><small>${unsynced ? `${unsynced} ${unsynced === 1 ? "activity" : "activities"} waiting to sync` : "Earned one small step at a time"}</small></div></div>${user ? `<section class="card section daily-plan"><div class="section-header"><div><div class="eyebrow">Today’s gentle plan</div><h2>Three useful next steps</h2></div><span class="pill">About ${Math.min(45, remaining + 15)} min</span></div><div class="grid"><article><strong>1 · Review</strong><p>${h(weak?.title || "A due flashcard deck")}</p>${button("Open review", () => go("library"), "small")}</article><article><strong>2 · Make meaning</strong><p>Turn one source into a reviewer or quiz.</p>${button("Open AI Studio", () => go("studio"), "small")}</article><article><strong>3 · Focus</strong><p>${remaining} quiet minutes toward today’s goal.</p>${button("Start timer", () => go("focus"), "small primary")}</article></div></section>` : ""}<div class="split section"><section><div class="section-header"><h2>Something to get you started</h2>${button("Browse all ↗", () => go("library"), "subtle small")}</div><div class="stack">${decks.map((deck, i) => `<div class="card row"><div><div class="eyebrow">${h(topics.find((t) => t.id === deck.topic_id)?.subject)}</div><h3>${h(deck.title)}</h3><span class="muted caption">${deck.card_count} flashcards · a few good minutes</span></div>${button("Study →", () => go("deck", { id: deck.id }), "small")}</div>`).join("")}</div></section><section><div class="section-header"><h2>A little extra care</h2></div><div class="card">${
     progress.topics
       .filter((t) => t.mastery !== null)
       .slice(0, 3)
@@ -1341,7 +1428,7 @@ views.progress = async () => {
     return `${title("Personal progress", "Measure against yourself.", "Sign in to see topic mastery and build a plan from your practice.")} ${button("Sign in", () => authPage(), "primary")}`;
   const p = await load("/api/progress"),
     sessions = await load("/api/study/sessions");
-  return `${title("Personal progress", "A clearer picture of your learning.", "Your weakest topics first. These estimates are guidance, not grades.")} ${p.offline ? '<div class="banner">Last synced progress. New local work is waiting for validation.</div>' : ""}<div class="grid stats"><div class="card stat"><label>Study XP</label><strong>${p.wallet.xp}</strong><small>${p.levels_enabled ? "Level " + p.wallet.level : "Levels are currently hidden"}</small></div><div class="card stat"><label>This week</label><strong>${p.week_minutes} <span class="caption">min</span></strong><small>Goal: ${user.weekly_goal} minutes</small></div><div class="card stat"><label>Study streak</label><strong>${p.streak} <span class="caption">days</span></strong><small>One grace day / 30 days</small></div></div><div class="split section"><section class="card"><h2>Your suggested study plan</h2>${p.topics.map((t, i) => `<div class="topic-row"><div class="row"><div><h3>${i + 1}. ${h(t.title)}</h3><p class="caption">${h(t.label)} · ${t.mastery === null ? "Not assessed" : t.mastery + "% recall"} · ${t.evidence_count} pieces of evidence</p></div>${button("Practice", () => go("library", { query: t.title.split(" ")[0] }), "small")}</div>${progressBar(t.mastery, t.title + " mastery")}<p class="caption spaced">${h(t.confidence)}. Suggested: ${t.suggested_minutes} minutes, then a short explained quiz.</p></div>`).join("")}</section><section class="card"><h2>Small milestones</h2>${p.badges.length ? p.badges.map((b) => `<p><span class="badge">✦ ${h(b.badge)}</span></p>`).join("") : empty("Your first milestone is ahead", "Finish a focus session or quiz to earn a badge.")}<div class="divider"></div><h3>How progress is measured</h3><p class="caption">Recent quiz correctness and card recall contribute to topic mastery. Older evidence gradually counts less. Fewer than five observations is shown as low evidence.</p>${
+  return `${title("Personal progress", "A clearer picture of your learning.", "Your weakest topics first. These estimates are guidance, not grades.")} ${p.offline ? '<div class="banner">Last synced progress. New local work is waiting for validation.</div>' : ""}<div class="grid stats"><div class="card stat"><label>Study XP</label><strong>${walletView(p.wallet).xp}</strong><small>${p.levels_enabled ? "Level " + walletView(p.wallet).level : "Levels are currently hidden"}</small></div><div class="card stat"><label>This week</label><strong>${p.week_minutes} <span class="caption">min</span></strong><small>Goal: ${user.weekly_goal} minutes</small></div><div class="card stat"><label>Study streak</label><strong>${p.streak} <span class="caption">days</span></strong><small>One grace day / 30 days</small></div></div><div class="split section"><section class="card"><h2>Your suggested study plan</h2>${p.topics.map((t, i) => `<div class="topic-row"><div class="row"><div><h3>${i + 1}. ${h(t.title)}</h3><p class="caption">${h(t.label)} · ${t.mastery === null ? "Not assessed" : t.mastery + "% recall"} · ${t.evidence_count} pieces of evidence</p></div>${button("Practice", () => go("library", { query: t.title.split(" ")[0] }), "small")}</div>${progressBar(t.mastery, t.title + " mastery")}<p class="caption spaced">${h(t.confidence)}. Suggested: ${t.suggested_minutes} minutes, then a short explained quiz.</p></div>`).join("")}</section><section class="card"><h2>Small milestones</h2>${p.badges.length ? p.badges.map((b) => `<p><span class="badge">✦ ${h(b.badge)}</span></p>`).join("") : empty("Your first milestone is ahead", "Finish a focus session or quiz to earn a badge.")}<div class="divider"></div><h3>How progress is measured</h3><p class="caption">Recent quiz correctness and card recall contribute to topic mastery. Older evidence gradually counts less. Fewer than five observations is shown as low evidence.</p>${
     p.levels_enabled
       ? table(p.wallet.unlocks, [
           ["Level", "level"],
@@ -1442,17 +1529,34 @@ async function uploadStudioFile(file, titleValue) {
   }
   return id;
 }
+// Downloads a file back from the student's private folder in 1 MiB pieces and checks the
+// SHA-256 recorded at upload before handing it over. Nothing is cached on the device.
+async function downloadStudioFile(source) {
+  const parts = [];
+  let offset = 0,
+    complete = false;
+  while (!complete) {
+    const piece = await client.request(`/api/studio/sources/${source.id}/file?offset=${offset}`, { cache: false, timeout: 30000 });
+    parts.push(Uint8Array.from(atob(piece.base64), (c) => c.charCodeAt(0)));
+    offset = piece.next_offset;
+    complete = piece.complete;
+  }
+  const blob = new Blob(parts, { type: source.mime || "application/octet-stream" });
+  if ((await digest(await blob.arrayBuffer())) !== source.sha256)
+    throw new Error("The downloaded file did not match its checksum. Try again.");
+  downloadBlob(source.filename, blob);
+}
 views.studio = async () => {
   if (!user)
     return `${title("AI Study Studio", "Turn your own files into study tools.", "Sign in to keep every upload private to your account.")}${button("Sign in", () => authPage(), "primary")}`;
   const data = await client.request("/api/studio", { cache: false });
-  return `${title("Your private sources", "AI Study Studio", "Upload a source once, then make a reviewer, presentation, quiz, Quizlet set, flashcards, transcript or study plan.", `<span class="pill">${data.ai_enabled ? "AI ready" : "Local text mode"}</span>`)}${!data.ai_enabled ? '<div class="banner">AI is not configured on this server yet. Plain-text files can use the local draft generator; documents and audio remain safely stored until the server owner adds an OpenAI API key.</div>' : ""}<section class="card studio-upload"><h2>Add a private source</h2>${form("studioUpload", `${field("Source title", "title", "", "text", 'maxlength="120" placeholder="e.g. Biology finals reviewer"')}<div class="field"><label for="studio-file">File · any type, up to 25 MB</label><input id="studio-file" name="file" type="file" required><small>Files are stored as inert data and are never executed. AI processing supports common documents, images and audio formats.</small></div><progress id="studio-upload-progress" max="100" value="0" aria-label="Upload progress"></progress><button type="submit" class="primary">Upload source</button>`, async (f) => {
+  return `${title("Your private sources", "AI Study Studio", "Upload a source once, then make a reviewer, presentation, quiz, Quizlet set, flashcards, transcript or study plan.", `<span class="pill">${data.ai_enabled ? "AI ready" : "Local text mode"}</span>`)}${!data.ai_enabled ? '<div class="banner">AI is not configured on this server yet. Plain-text files can use the local draft generator; PDFs, images and audio remain safely stored until the server owner adds a Gemini API key.</div>' : ""}<section class="card studio-upload"><h2>Add a private source</h2>${form("studioUpload", `${field("Source title", "title", "", "text", 'maxlength="120" placeholder="e.g. Biology finals reviewer"')}<div class="field"><label for="studio-file">File · any type, up to 25 MB</label><input id="studio-file" name="file" type="file" required><small>Files are encrypted on the server, stored as inert data and never executed. AI processing supports common documents, images and audio formats.</small></div><progress id="studio-upload-progress" max="100" value="0" aria-label="Upload progress"></progress><button type="submit" class="primary">Upload source</button>`, async (f) => {
     const id = await uploadStudioFile(f.get("file"), f.get("title"));
     toast("Private source uploaded.");
     companionFriendship(1);
     companionReact("celebrate", "New notes! I’m ready to help turn them into something useful.");
     await go("studioSource", { id });
-  })}</section><section class="section"><div class="section-header"><h2>Your sources</h2><span class="caption">${data.sources.length} private files</span></div><div class="grid studio-grid">${data.sources.map((source) => `<article class="card"><div class="icon-square">▧</div><h3>${h(source.title)}</h3><p class="caption">${h(source.filename)} · ${bytesLabel(source.bytes)} · ${h(source.state)}</p><div class="actions">${button("Create study tool", () => go("studioSource", { id: source.id }), "primary small")}${button("Delete", async () => { if (!confirm("Delete this source and every generated artifact?")) return; await client.mutate(`/api/studio/sources/${source.id}`, {}, { method: "DELETE" }); await go("studio"); }, "small danger")}</div></article>`).join("") || empty("No sources yet", "Upload lecture notes, a PDF, slides, a photo, audio or another private study file.")}</div></section><section class="section"><div class="section-header"><h2>Generated study tools</h2></div><div class="grid studio-grid">${data.artifacts.map((artifact) => `<article class="card"><span class="badge">${h(artifact.kind.replaceAll("_", " "))}</span><h3 class="spaced">${h(artifact.title)}</h3><p class="caption">${artifact.ai ? "AI generated" : "Local draft"} · ${h(date(artifact.created))}</p>${button("Open", () => go("studioArtifact", { id: artifact.id }), "small")}</article>`).join("") || empty("Nothing generated yet", "Choose a source and create the format that helps you study.")}</div></section>`;
+  })}</section><section class="section"><div class="section-header"><div><h2>My private folder</h2><p class="caption">Only you can see these files. They are encrypted on the server and never shared with classmates, teachers or rooms.</p></div><span class="caption">${data.sources.length} ${data.sources.length === 1 ? "file" : "files"}</span></div><div class="card folder-usage"><div class="row"><strong>${bytesLabel(data.used_bytes)} of ${bytesLabel(data.quota_bytes)} used</strong><span class="caption">${bytesLabel(Math.max(0, data.quota_bytes - data.used_bytes))} free</span></div>${progressBar((data.used_bytes / data.quota_bytes) * 100, "Private folder storage used")}</div><div class="grid studio-grid section">${data.sources.map((source) => `<article class="card"><div class="icon-square">▧</div><h3>${h(source.title)}</h3><p class="caption">${h(source.filename)} · ${bytesLabel(source.bytes)} · ${h(source.state)}</p><div class="actions">${button("Create study tool", () => go("studioSource", { id: source.id }), "primary small", source.state !== "ready")}${button(`Download<span class="sr-only"> ${h(source.filename)}</span>`, () => downloadStudioFile(source), "small", source.state !== "ready")}${button("Delete", async () => { if (!confirm("Delete this file and every study tool made from it?")) return; await client.mutate(`/api/studio/sources/${source.id}`, {}, { method: "DELETE" }); await go("studio"); }, "small danger")}</div></article>`).join("") || empty("Your folder is empty", "Upload lecture notes, a PDF, slides, a photo, audio or another private study file.")}</div></section><section class="section"><div class="section-header"><h2>Generated study tools</h2></div><div class="grid studio-grid">${data.artifacts.map((artifact) => `<article class="card"><span class="badge">${h(artifact.kind.replaceAll("_", " "))}</span><h3 class="spaced">${h(artifact.title)}</h3><p class="caption">${artifact.ai ? "AI generated" : "Local draft"} · ${h(date(artifact.created))}</p>${button("Open", () => go("studioArtifact", { id: artifact.id }), "small")}</article>`).join("") || empty("Nothing generated yet", "Choose a source and create the format that helps you study.")}</div></section>`;
 };
 views.studioSource = async ({ id }) => {
   const data = await client.request("/api/studio", { cache: false }), source = data.sources.find((x) => x.id === id);
@@ -1616,15 +1720,21 @@ async function report(kind, target_id) {
 views.shop = async () => {
   if (!user)
     return `${title("Study rewards", "Small rewards for steady effort.", "Earn cosmetics and study items without paying or competing.")} ${button("Sign in", () => authPage(), "primary")}`;
+  await settleSync();
   const data = await load("/api/shop");
-  vault.data.equipped=Object.fromEntries(data.inventory.filter(i=>i.equipped&&!i.consumed).map(i=>[i.kind,i.value]));await vault.save();
-  return `${title("A little well-earned joy", "Make this space feel like you.", "Fixed prices. No paid entry, no random boxes, no cash payouts.", `<span class="pill">✦ ${data.wallet.coins} study coins</span>`)}${companionGallery()}${streakRewardGallery()}<div class="grid section">${data.items
+  vault.data.equipped=Object.fromEntries(data.inventory.filter(i=>i.equipped&&!i.consumed).map(i=>[i.kind,i.value]));
+  vault.data.ownedThemes = data.inventory.filter((i) => i.kind === "theme" && !i.consumed).map((i) => i.value);
+  await vault.save();
+  return `${title("A little well-earned joy", "Make this space feel like you.", "Fixed prices. No paid entry, no random boxes, no cash payouts.", `<span class="pill" id="shop-coins">✦ ${walletView(data.wallet).coins} study coins</span>`)}${companionGallery()}${streakRewardGallery()}<div class="grid section">${data.items
     .map((item) => {
       const own = data.inventory.find(
           (i) => i.item_id === item.id && !i.consumed,
         ),
         claim = data.claims.find((c) => c.item_id === item.id);
-      return `<article class="card shop-item"><div class="item-art" aria-hidden="true">${{ hat: "🌿", border: "◇", theme: "☾", skin: "🦊", freeze: "❄", prize: "▣", content: "▤" }[item.kind]}</div><h2>${h(item.title)}</h2><p>${item.price} coins · ${h(item.kind)}${item.stock !== null ? " · " + item.stock + " available" : ""}</p>${
+      // A theme stays owned after the student picks another look in Settings, so "in use"
+      // follows the active theme rather than the server's last-equipped flag.
+      const inUse = item.kind === "theme" ? own && vault.data.theme === item.value : !!own?.equipped;
+      return `<article class="card shop-item"><div class="item-art" aria-hidden="true">${{ hat: "🌿", border: "◇", theme: "☾", skin: "🦊", freeze: "❄", prize: "▣", content: "▤", effect: "✺" }[item.kind]}</div><h2>${h(item.title)}</h2><p>${item.price} coins · ${h(item.kind)}${item.stock !== null ? " · " + item.stock + " available" : ""}</p>${
         item.kind === "prize"
           ? button(
               "Read rules & eligibility",
@@ -1644,12 +1754,12 @@ views.shop = async () => {
                   "small",
                 )
               : button(
-                  own.equipped ? "Equipped" : "Equip",
+                  inUse ? "Equipped" : "Equip",
                   async () => {
                     await client.mutate(`/api/inventory/${item.id}/equip`);
                     if (item.kind === "theme") {
                       vault.data.theme = item.value;
-                      document.documentElement.dataset.theme = item.value;
+                      applyTheme(item.value);
                       await vault.save();
                     }
                     toast("Your item is equipped.");
@@ -1657,7 +1767,7 @@ views.shop = async () => {
                     companionReact("celebrate");
                   },
                   "small",
-                  !!own.equipped,
+                  inUse,
                 )
             : button(
                 "Get for " + item.price + " coins",
@@ -2133,25 +2243,12 @@ views.duel = async () => {
 };
 views.settings = async () => {
   if (!user)
-    return `${title("Your preferences", "A study space that fits you.", "Sign in to customize reminders, privacy and your learning rhythm.")}<div class="actions">${button("Sign in", () => authPage(), "primary")}${button("Read privacy notice", privacy)}${button(
-      "Switch light / dark",
-      () => {
-        document.documentElement.dataset.theme =
-          document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-      },
-    )}</div>`;
+    return `${title("Your preferences", "A study space that fits you.", "Sign in to customize reminders, privacy and your learning rhythm.")}<div class="actions">${button("Sign in", () => authPage(), "primary")}${button("Read privacy notice", privacy)}</div><section class="card section"><h2>Display</h2>${themePicker()}</section>`;
   const notifications = await load("/api/notifications"),
     settings = notifications.settings,
     devices = await load("/api/me/devices"),
     reports = await load("/api/reports");
-  return `${title("Your preferences", "Make this space your own.", "Your goals, your privacy, your choice.")}<div class="tabs">${button("Rewards", () => go("shop"))}${flag("rooms") ? button("Study rooms", () => go("rooms")) : ""}${flag("competition") && user.competition ? button("Quiz duels", () => go("duel")) : ""}${["teacher", "admin"].includes(user.role) ? button("School console", () => go("admin")) : ""}</div><div class="split"><section class="card"><h2>Profile & study rhythm</h2>${profileForm()}<div class="divider"></div>${button(
-    "Switch light / dark",
-    async () => {
-      vault.data.theme = vault.data.theme === "dark" ? "light" : "dark";
-      document.documentElement.dataset.theme = vault.data.theme;
-      await vault.save();
-    },
-  )}<p class="caption spaced">Display name is the only personal identity shown to room peers. Your school ID, email and study logs stay private.</p>${
+  return `${title("Your preferences", "Make this space your own.", "Your goals, your privacy, your choice.")}<div class="tabs">${button("Rewards", () => go("shop"))}${flag("rooms") ? button("Study rooms", () => go("rooms")) : ""}${flag("competition") && user.competition ? button("Quiz duels", () => go("duel")) : ""}${["teacher", "admin"].includes(user.role) ? button("School console", () => go("admin")) : ""}</div><div class="split"><section class="card"><h2>Profile & study rhythm</h2>${profileForm()}<div class="divider"></div>${themePicker()}<p class="caption spaced">Display name is the only personal identity shown to room peers. Your school ID, email and study logs stay private.</p>${
     !user.verified
       ? button("Resend verification email", async () => {
           const result = await client.mutate("/api/auth/resend");
@@ -2498,6 +2595,7 @@ views.admin = async () => {
               "border",
               "hat",
               "theme",
+              "effect",
               "content",
               "freeze",
               "prize",

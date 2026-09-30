@@ -112,6 +112,51 @@ test("SYNC07 HTML hosting responses become a helpful backend error", async () =>
   );
 });
 
+test("WALLET01 work queued during a running sync is sent before its mutate resolves", async () => {
+  const vault = makeVault(),
+    client = new Client(vault);
+  let release, coins = 0;
+  const first = new Promise((ok) => (release = ok));
+  globalThis.fetch = async (url) => {
+    if (url.endsWith("/first")) await first;
+    coins += 1;
+    return response({ wallet: { coins } });
+  };
+  const slow = client.mutate("/api/first", {}, { queue: true });
+  await new Promise((ok) => setTimeout(ok, 0));
+  const second = client.mutate("/api/cards/card/review", {}, { queue: true });
+  release();
+  const [, result] = await Promise.all([slow, second]);
+  assert.equal(result.pending, false);
+  assert.deepEqual(result.result, { wallet: { coins: 2 } });
+  assert.equal(vault.data.wallet.coins, 2);
+  assert.equal(vault.data.pending.length, 0);
+});
+test("WALLET02 direct purchases update the shared wallet; admin answers never replace it", async () => {
+  const vault = makeVault(),
+    client = new Client(vault);
+  globalThis.fetch = async () => response({ wallet: { coins: 7 } });
+  await client.mutate("/api/shop/hat-leaf/purchase");
+  assert.equal(vault.data.wallet.coins, 7);
+  globalThis.fetch = async () => response({ wallet: { coins: 999 } });
+  await client.mutate("/api/admin/ledger", { user_id: "someone-else" });
+  assert.equal(vault.data.wallet.coins, 7);
+});
+test("WALLET03 an offline cached answer never overwrites a newer confirmed wallet", async () => {
+  const vault = makeVault(),
+    client = new Client(vault);
+  vault.data.cache["/api/progress"] = { data: { wallet: { coins: 1 } }, at: 0 };
+  vault.data.wallet = { coins: 9 };
+  navigator.onLine = false;
+  try {
+    const cached = await client.request("/api/progress");
+    assert.equal(cached.offline, true);
+  } finally {
+    navigator.onLine = true;
+  }
+  assert.equal(vault.data.wallet.coins, 9);
+});
+
 import { previewCSV } from "../web/import.js";
 test("CSV04 offline quoted multiline Unicode import and duplicates", () => {
   const result = previewCSV('front,back\n"Ano, ini?","Pagtuon\n📖"\nQ,A\nQ,A');

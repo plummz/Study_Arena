@@ -28,7 +28,7 @@ Pagination defaults to 30, maximum 100, with nonnegative `offset`. A saved deck 
 | `PUT /api/me` | student; key required | `{version,display_name,course,year,subjects[],timezone,daily_goal,weekly_goal,competition}` | `{user}` | VERSION_CONFLICT,VALIDATION |
 | `GET /api/me/devices` | student; no key required | `—` | `{items:[{id,device,created,expires,current}]}` | — |
 | `DELETE /api/me/devices/{id}` | student; key required | `{}` | `{ok}` | — |
-| `GET /api/me/export` | student; no key required | `—` | `{profile,sessions,attempts,answers,reviews,decks,cards,materials,memberships,inventory,ledger,claims,evidence,settings,badges,streak_days}` | REAUTH_REQUIRED |
+| `GET /api/me/export` | student; no key required | `—` | `{profile,sessions,attempts,answers,reviews,decks,cards,materials,memberships,inventory,ledger,claims,evidence,settings,badges,streak_days,login_days,studio_sources,studio_artifacts}` | REAUTH_REQUIRED |
 | `POST /api/me/delete` | student; no key required | `{confirm:'DELETE'}` | `{message,delete_after}` | REAUTH_REQUIRED,ACTIVE_ROOM,PENDING_CLAIM |
 | `GET /api/topics` | public; no key required | `—` | `{items:[Topic]}` | — |
 | `GET /api/decks` | public; no key required | `?q=&topic=&offset=&limit=` | `{items:[Deck]}` | — |
@@ -59,13 +59,27 @@ Pagination defaults to 30, maximum 100, with nonnegative `offset`. A saved deck 
 | `POST /api/study/sessions` | student; key required | `{topic_id,notes?}` | `{session}` | ACTIVE_SESSION |
 | `PUT /api/study/sessions/{id}` | student; key required | `{action:'heartbeat'\|'pause'\|'resume'\|'complete'\|'discard',notes?}` | `{session,wallet}` | INVALID_STATE |
 | `POST /api/study/offline` | student; key required | `{id,topic_id,started,ended,elapsed,timezone,notes}` | `{session,wallet}` | VALIDATION,SESSION_CONFLICT |
-| `POST /api/cards/{id}/review` | student; key required | `{known:boolean,occurred?}` | `{schedule,rewarded,wallet}` | VALIDATION,NOT_FOUND |
+| `POST /api/cards/{id}/review` | student; key required | `{known?:boolean,rating?:again\|hard\|good\|easy,occurred?}` | `{schedule,rewarded,wallet}` | VALIDATION,NOT_FOUND |
 | `POST /api/quizzes/{id}/attempts` | student; key required | `{timed:boolean}` | `{attempt,questions}` | EMPTY_QUIZ |
 | `GET /api/attempts/{id}` | student; no key required | `—` | `{attempt,questions,answers}` | NOT_FOUND |
 | `POST /api/attempts/{id}/answer` | student; key required | `{question_id,answer}` | `{correct,accepted,explanation,late}` | INVALID_STATE,QUESTION_NOT_FOUND |
 | `POST /api/attempts/{id}/finish` | student; key required | `{discard?:boolean}` | `{attempt,questions,answers,wallet}` | — |
 | `POST /api/quizzes/{id}/offline` | student; key required | `{id,version,started,ended,timed,answers:[{question_id,answer,elapsed}]}` | `{attempt,questions,answers,wallet}` | CONTENT_CHANGED,VALIDATION |
 | `GET /api/progress` | student; no key required | `—` | `{topics:[{mastery,evidence_count,label,confidence,suggested_minutes}],history,wallet,streak,today_minutes,week_minutes,badges,levels_enabled}` | — |
+| `GET /api/studio` | student; no key required | `—` | `{sources,artifacts,ai_enabled,max_bytes,quota_bytes,used_bytes}` | — |
+| `POST /api/studio/sources` | student; key required | `{title,filename,mime,bytes,sha256}` | `{source}` | VALIDATION,QUOTA |
+| `POST /api/studio/sources/{id}/chunks` | student; key required | `{offset,base64,complete}` | `{source}` | UPLOAD_OFFSET,CHECKSUM_MISMATCH,QUOTA |
+| `GET /api/studio/sources/{id}/file` | student; no key required | `?offset=byte offset` | `{source,base64,offset,next_offset,complete}` | NOT_FOUND,UPLOAD_INCOMPLETE |
+| `DELETE /api/studio/sources/{id}` | student; key required | `{}` | `{ok}` | NOT_FOUND |
+| `POST /api/studio/generate` | student; key required | `{source_id,kind,instructions?}` | `{artifact,ai_enabled}` | NOT_FOUND,AI_NOT_CONFIGURED,UNSUPPORTED_AI_FILE,AI_KEY_REJECTED,AI_RATE_LIMITED,AI_BUSY,AI_MODEL_UNAVAILABLE,AI_BLOCKED,AI_UNAVAILABLE |
+| `GET /api/studio/artifacts/{id}` | student; no key required | `—` | `{artifact}` | NOT_FOUND |
+| `DELETE /api/studio/artifacts/{id}` | student; key required | `{}` | `{ok}` | NOT_FOUND |
+| `POST /api/dungeon/launch` | public; no key required | `{companion:moss\|lumi\|coral\|sky\|plum\|sunny\|mint\|nova\|ember\|bubbles\|byte\|clover\|mochi\|comet\|pebble\|melody\|taro\|sol,difficulty:easy\|average\|hard\|hell,run_id?,ticket?}` | `{launched,already_running,companion,difficulty}` | VALIDATION,DUNGEON_UNAVAILABLE,DUNGEON_LAUNCH_FAILED |
+| `POST /api/dungeon/runs` | student; no key required | `{difficulty:easy\|average\|hard\|hell,companion}` | `{run_id,ticket,expires_at,difficulty,question_count,hint_cost,time_limit_seconds,mistake_limit,source}` | VALIDATION,FEATURE_DISABLED |
+| `GET /api/dungeon/runs/{run_id}/questions` | dungeon; no key required | `-` | `{run_id,questions:[{index,prompt,options,subject,source}],state}` | RUN_NOT_FOUND,TICKET_INVALID |
+| `POST /api/dungeon/runs/{run_id}/answer` | dungeon; no key required | `{index,choice}` | `{index,correct,correct_choice,explanation,coins_awarded,mercy_token,cap_reached,flagged_fast,state}` | VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,RATE_LIMITED |
+| `POST /api/dungeon/runs/{run_id}/hint` | dungeon; no key required | `{index}` | `{index,removed_choices,coins_spent,wallet_balance}` | VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,INSUFFICIENT_COINS,RATE_LIMITED |
+| `POST /api/dungeon/runs/{run_id}/finish` | dungeon; no key required | `{outcome:victory\|lost\|abandoned\|timeout}` | `{run_id,outcome,answered,correct_count,coins_awarded,duration_seconds}` | VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED |
 | `GET /api/rooms` | student; no key required | `?topic=&offset=&limit=` | `{mine,matching}` | FEATURE_DISABLED |
 | `POST /api/rooms` | student; key required | `{title,topic_id}` | `{room,code}` | VALIDATION,FEATURE_DISABLED |
 | `POST /api/rooms/join` | student; key required | `{code?\|room_id?}` | `{room}` | INVALID_INVITE,ROOM_FULL,SKILL_BAND_MISMATCH |
@@ -95,12 +109,6 @@ Pagination defaults to 30, maximum 100, with nonnegative `offset`. A saved deck 
 | `POST /api/admin/claims/{id}` | admin; key required | `{action:'approve'\|'deny'\|'fulfill',reason,eligibility_ref?,receipt?}` | `{claim}` | INVALID_STATE,ELIGIBILITY_REQUIRED,SELF_APPROVAL |
 | `POST /api/admin/ledger` | admin; key required | `{user_id,xp,coins,reason,origin}` | `{wallet}` | NEGATIVE_BALANCE |
 | `POST /api/push/register` | student; key required | `{token,platform:android}` | `{ok}` | VALIDATION |
-| `POST /api/dungeon/launch` | public; no key required | `{companion:moss\|lumi\|coral\|sky\|plum\|sunny\|mint\|nova\|ember\|bubbles\|byte\|clover\|mochi\|comet\|pebble\|melody\|taro\|sol,difficulty:easy\|average\|hard\|hell,run_id?,ticket?}` | `{launched,already_running,companion,difficulty}` | VALIDATION,DUNGEON_UNAVAILABLE,DUNGEON_LAUNCH_FAILED |
-| `POST /api/dungeon/runs` | student; no key required | `{difficulty:easy\|average\|hard\|hell,companion}` | `{run_id,ticket,expires_at,difficulty,question_count,hint_cost,time_limit_seconds,mistake_limit,source}` | VALIDATION,FEATURE_DISABLED |
-| `GET /api/dungeon/runs/{run_id}/questions` | dungeon; no key required | `-` | `{run_id,questions:[{index,prompt,options,subject,source}],state}` | RUN_NOT_FOUND,TICKET_INVALID |
-| `POST /api/dungeon/runs/{run_id}/answer` | dungeon; no key required | `{index,choice}` | `{index,correct,correct_choice,explanation,coins_awarded,mercy_token,cap_reached,flagged_fast,state}` | VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,RATE_LIMITED |
-| `POST /api/dungeon/runs/{run_id}/hint` | dungeon; no key required | `{index}` | `{index,removed_choices,coins_spent,wallet_balance}` | VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED,INSUFFICIENT_COINS,RATE_LIMITED |
-| `POST /api/dungeon/runs/{run_id}/finish` | dungeon; no key required | `{outcome:victory\|lost\|abandoned\|timeout}` | `{run_id,outcome,answered,correct_count,coins_awarded,duration_seconds}` | VALIDATION,RUN_NOT_FOUND,TICKET_INVALID,RUN_CLOSED |
 | `GET /api/health` | public; no key required | `—` | `{status,demo,server_time}` | — |
 | `GET /api/config` | public; no key required | `—` | `{flags,earning_rules,support,api_origin}` | — |
 | `GET /api/contracts` | public; no key required | `—` | `{endpoints:[EndpointContract]}` | — |
@@ -114,7 +122,11 @@ Every error is `{ "error": { "code": "CODE", "message": "Human-readable reason",
 | `ACTIVE_ROOM` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `ACTIVE_SESSION` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `AGE_RESTRICTED` | 403 | Correct the input or show the domain message; do not blindly retry. |
+| `AI_BLOCKED` | 422 | Correct the input or show the domain message; do not blindly retry. |
+| `AI_BUSY` | 503 | Correct the input or show the domain message; do not blindly retry. |
 | `AI_NOT_CONFIGURED` | 409 | Correct the input or show the domain message; do not blindly retry. |
+| `AI_RATE_LIMITED` | 503 | Correct the input or show the domain message; do not blindly retry. |
+| `AI_UNAVAILABLE` | 503 | Correct the input or show the domain message; do not blindly retry. |
 | `ALREADY_CLAIMED` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `ALREADY_PROTECTED` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `AUTH_REQUIRED` | 401 | Sign in again; retain the encrypted local workspace and queue. |
@@ -136,6 +148,7 @@ Every error is `{ "error": { "code": "CODE", "message": "Human-readable reason",
 | `EMPTY_CONTENT` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `EMPTY_QUIZ` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `FEATURE_DISABLED` | 403 | Correct the input or show the domain message; do not blindly retry. |
+| `FILE_DAMAGED` | 500 | Correct the input or show the domain message; do not blindly retry. |
 | `FILE_UNAVAILABLE` | 404 | Correct the input or show the domain message; do not blindly retry. |
 | `FORBIDDEN` | 403 | Correct the input or show the domain message; do not blindly retry. |
 | `IDEMPOTENCY_CONFLICT` | 409 | Investigate key reuse; do not silently change keys for an uncertain committed operation. |
@@ -149,6 +162,7 @@ Every error is `{ "error": { "code": "CODE", "message": "Human-readable reason",
 | `INVALID_JSON` | 400 | Correct the input or show the domain message; do not blindly retry. |
 | `INVALID_STATE` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `METHOD_NOT_ALLOWED` | 405 | Correct the input or show the domain message; do not blindly retry. |
+| `MIGRATION` | 500 | Correct the input or show the domain message; do not blindly retry. |
 | `NEGATIVE_BALANCE` | 409 | Correct the input or show the domain message; do not blindly retry. |
 | `NOT_FOUND` | 404 | Correct the input or show the domain message; do not blindly retry. |
 | `ORIGIN_DENIED` | 403 | Correct the input or show the domain message; do not blindly retry. |

@@ -14,7 +14,9 @@ export class Client {
   constructor(vault = null) {
     this.vault = vault;
     this.token = vault?.data.token || "";
-    this.syncing = false;
+    this.running = null;
+    this.again = false;
+    this.results = new Map();
     this.backoff = 1000;
   }
   async request(
@@ -64,6 +66,13 @@ export class Client {
           data.error?.code || "HTTP_ERROR",
           response.status,
         );
+      // Every fresh server answer that carries the signed-in student's wallet becomes the
+      // one wallet every screen shows. Admin answers can describe another user's wallet.
+      const ownWallet = data.wallet && this.vault && !path.startsWith("/api/admin");
+      if (ownWallet) {
+        this.vault.data.wallet = data.wallet;
+        this.vault.data.walletAt = Date.now();
+      }
       if (
         method === "GET" &&
         cache &&
@@ -73,7 +82,7 @@ export class Client {
       ) {
         this.vault.data.cache[path] = { data, at: Date.now() };
         await this.vault.save();
-      }
+      } else if (ownWallet) await this.vault.save();
       return data;
     } catch (error) {
       if (
@@ -106,49 +115,67 @@ export class Client {
     });
     await this.vault.save();
     await this.sync();
+    const result = this.results.get(key) ?? null;
+    this.results.delete(key);
     return {
       pending: this.vault.data.pending.some((op) => op.id === key),
-      result: this.lastResult?.key === key ? this.lastResult.data : null,
+      result,
     };
   }
-  async sync() {
-    if (this.syncing || !this.vault || !navigator.onLine || !this.token) return;
-    this.syncing = true;
-    try {
-      const batch = this.vault.data.pending.slice(0, 20);
-      for (const op of batch) {
-        if (op.error) continue;
-        try {
-          const data = await this.request(op.path, {
-            method: op.method,
-            body: op.body,
-            key: op.id,
-            cache: false,
-          });
-          this.lastResult = { key: op.id, data };
-          this.vault.data.pending = this.vault.data.pending.filter(
-            (x) => x.id !== op.id,
-          );
-          if (data.wallet) this.vault.data.wallet = data.wallet;
-          await this.vault.save();
-          this.backoff = 1000;
-        } catch (error) {
-          if (
-            error instanceof ApiError &&
-            error.status >= 400 &&
-            error.status < 500 &&
-            ![401, 429].includes(error.status)
-          ) {
-            op.error = `${error.code}: ${error.message}`;
-            await this.vault.save();
-            continue;
-          }
-          this.backoff = Math.min(this.backoff * 2, 60000);
-          break;
-        }
+  get syncing() {
+    return Boolean(this.running);
+  }
+  // Callers that arrive while a pass is running wait for it and for one more pass, so an
+  // operation queued mid-sync (e.g. a coin-earning review) is sent before mutate() returns.
+  sync() {
+    if (!this.vault || !navigator.onLine || !this.token) return Promise.resolve();
+    if (this.running) {
+      this.again = true;
+      return this.running;
+    }
+    this.running = (async () => {
+      try {
+        do {
+          this.again = false;
+          await this.drain();
+        } while (this.again);
+      } finally {
+        this.running = null;
       }
-    } finally {
-      this.syncing = false;
+    })();
+    return this.running;
+  }
+  async drain() {
+    const batch = this.vault.data.pending.slice(0, 20);
+    for (const op of batch) {
+      if (op.error) continue;
+      try {
+        const data = await this.request(op.path, {
+          method: op.method,
+          body: op.body,
+          key: op.id,
+          cache: false,
+        });
+        this.results.set(op.id, data);
+        this.vault.data.pending = this.vault.data.pending.filter(
+          (x) => x.id !== op.id,
+        );
+        await this.vault.save();
+        this.backoff = 1000;
+      } catch (error) {
+        if (
+          error instanceof ApiError &&
+          error.status >= 400 &&
+          error.status < 500 &&
+          ![401, 429].includes(error.status)
+        ) {
+          op.error = `${error.code}: ${error.message}`;
+          await this.vault.save();
+          continue;
+        }
+        this.backoff = Math.min(this.backoff * 2, 60000);
+        break;
+      }
     }
   }
 }

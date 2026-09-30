@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS dungeon_run_questions (
 CREATE TRIGGER IF NOT EXISTS immutable_ledger_update BEFORE UPDATE OF xp,coins,origin,reason,created ON ledger BEGIN SELECT RAISE(ABORT,'immutable ledger'); END;
 CREATE TRIGGER IF NOT EXISTS immutable_ledger_delete BEFORE DELETE ON ledger BEGIN SELECT RAISE(ABORT,'immutable ledger'); END;
 CREATE TABLE IF NOT EXISTS catalog (
- id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('skin','border','hat','theme','content','freeze','prize')),
+ id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('skin','border','hat','theme','effect','content','freeze','prize')),
  price INTEGER NOT NULL CHECK(price>=0), stock INTEGER CHECK(stock>=0), adult_only INTEGER NOT NULL DEFAULT 0,
  rules TEXT NOT NULL DEFAULT '', rules_version INTEGER NOT NULL DEFAULT 1, sponsor TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1,
  value TEXT NOT NULL DEFAULT ''
