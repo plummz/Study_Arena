@@ -112,6 +112,14 @@ Updated 2026-09-26. No user deadline has been provided. Dates below are evidence
 - Updates: `APP_BUILD` 2 / versionCode 2; `web/app-version.json` on Pages; app shows "A new version is ready → Download update" when a higher build is published (tested with a faked newer and equal build). Silent auto-install is not possible for sideloaded APKs.
 - Drive: the Drive connector cannot replace content or upload 10 MB; releases overwrite `G:\My Drive\ANDROID APPS\app-debug.apk` through Google Drive for desktop (keeps the link). Recorded in START_HERE.md and agent memory.
 
+## SA-016 — Dungeon view jumped while using the movement stick on phones (2026-10-01)
+
+- Status: fixed; Godot smoke test passes. Owner/implementer: Claude; head: engineering.
+- Report: user phone video — touching or moving made the view jump. Frame analysis (frames 337→341) showed a ~90° turn in 0.17 s while only the movement stick was held.
+- Cause: Godot emulates mouse events from touches (needed for menu buttons). The first-person controller captured the mouse on any press unless `OS.has_feature("mobile")`, which is false in a phone browser (`web_android`), so stick drags became mouse-look.
+- Fix: the controller ignores emulated mouse events (`DEVICE_ID_EMULATION`) and never captures the mouse on touch platforms (`mobile`, `web_android`, `web_ios`); smoke test asserts an emulated drag does not turn the camera (a guard only — headless runs never capture the mouse). **Unverified on the phone** until the user retests after Pages deploys.
+- APK: unchanged (dungeon-only fix; the app loads the published web dungeon), so the Drive file was not replaced.
+
 ## Task card template
 
 ID; request/source; feature status (current/planned/unverified); owner; responsible head; acceptance criteria; inputs and privacy class; user supplied deadline; dependencies; status; deliverable links; head review; independent verification; QA evidence; code review (or N/A reason); security/privacy review; unresolved findings and owner; decision/date.

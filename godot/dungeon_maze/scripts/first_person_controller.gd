@@ -110,10 +110,18 @@ func _build_view_model() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not controls_enabled:
 		return
+	# Touches also arrive as emulated mouse events (device -1) so menus work with fingers.
+	# They must never turn the camera or capture the mouse: on phones that made dragging the
+	# movement stick spin the view. Touch look is handled by MobileControls.
+	if event.device == InputEvent.DEVICE_ID_EMULATION or is_touch_platform():
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_apply_look(event.relative * mouse_sensitivity)
-	elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not OS.has_feature("mobile"):
+	elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+static func is_touch_platform() -> bool:
+	return OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
 
 ## Turn from a touch drag measured in screen-heights (1.0 = a swipe the full short side).
 ## At the default speed that swipe turns about 75°.

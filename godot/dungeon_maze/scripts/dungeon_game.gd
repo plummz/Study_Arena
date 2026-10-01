@@ -225,6 +225,14 @@ func _smoke_test() -> void:
 	assert(get_tree().get_nodes_in_group("snake").size() == int(DIFFICULTIES.easy.serpents))
 	assert(get_tree().get_nodes_in_group("trap").size() == int(DIFFICULTIES.easy.traps))
 	assert(player is FirstPersonController and player.camera.current)
+	# A touch drag also arrives as an emulated mouse motion; it must not turn the camera
+	# (on phones it spun the view while the movement stick was dragged).
+	var yaw_before := player.yaw
+	var fake := InputEventMouseMotion.new()
+	fake.device = InputEvent.DEVICE_ID_EMULATION
+	fake.relative = Vector2(400, 0)
+	player._unhandled_input(fake)
+	assert(is_equal_approx(player.yaw, yaw_before))
 	# ENGAGE reaches an encounter 2 m away; crouching lowers the view and stays toggled.
 	var start_at := player.global_position
 	player.global_position = encounters[3].global_position + Vector3(2.0, 0.0, 0.0)
@@ -1960,7 +1968,7 @@ func _on_sound_played(sound: String) -> void:
 	caption_clock = 2.2
 
 func _capture_mouse() -> void:
-	if smoke_mode or OS.has_feature("mobile") or (is_instance_valid(mobile_controls) and mobile_controls.visible and DisplayServer.is_touchscreen_available()):
+	if smoke_mode or FirstPersonController.is_touch_platform() or (is_instance_valid(mobile_controls) and mobile_controls.visible and DisplayServer.is_touchscreen_available()):
 		return
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
