@@ -102,6 +102,16 @@ Updated 2026-09-26. No user deadline has been provided. Dates below are evidence
 - Docs: `START_HERE.md` (read first; Android Studio setup and rebuild/run steps), `CLAUDE.md` imports it with AGENTS.md; AGENTS.md links it.
 - QA evidence: see the SA-014 test run in the final report (unit, integration, e2e, DomainTests, Godot smoke, APK build).
 
+## SA-015 — Shooter-style dungeon controls, landscape, settings, performance, in-app updates (2026-10-01)
+
+- Status: QA passed; awaiting user review. Owner/implementer: Claude; heads: engineering, design. No deadline supplied.
+- Request: dungeon auto-landscape; controls like the user's CODM screenshot (stick left; attack/buffs/jump/crouch right); reduce lag on phone and desktop; a settings button; APK replaced in Drive after every app change, recorded in the read-first file; auto-update.
+- Dungeon: ENGAGE (E / big button, starts the nearest unresolved encounter within 4.5 m, gold when available), CROUCH (C; 55% speed, lower eye height, skeletons notice at 5.2 m instead of 10.5 m), JUMP, RUN; buff badges; PAUSE/MAP/SETTINGS upper-left; the touch PAUSE button never worked before (simulated actions create no InputEvent) — fixed by calling the game directly. Settings panel (gear, O, Pause → Settings) with touch look speed/size/opacity, left-handed layout, vibration, mouse sensitivity, invert, quality, FOV, fps readout, volume, captions, reduced motion, reset.
+- Landscape: fullscreen + `screen.orientation.lock('landscape')` on the first tap on touch devices, portrait cover otherwise (export head_include); checked in emulated portrait/landscape/desktop pages.
+- Performance (owner's laptop, `--bench`, 1600×720): touch layout 30 → 53 fps after redrawing controls only on change; 3D resolution scaling measured slower (56 → 23 fps) and was not used; web build renders at CSS pixels (`allow_hidpi=false`) to cut phone pixel count ~7×; 60 fps cap on touch; desktop auto-Low when < 28 fps for 6 s on High; vignette shader skips grain math when off. **Unverified:** frame rate on a real phone.
+- Updates: `APP_BUILD` 2 / versionCode 2; `web/app-version.json` on Pages; app shows "A new version is ready → Download update" when a higher build is published (tested with a faked newer and equal build). Silent auto-install is not possible for sideloaded APKs.
+- Drive: the Drive connector cannot replace content or upload 10 MB; releases overwrite `G:\My Drive\ANDROID APPS\app-debug.apk` through Google Drive for desktop (keeps the link). Recorded in START_HERE.md and agent memory.
+
 ## Task card template
 
 ID; request/source; feature status (current/planned/unverified); owner; responsible head; acceptance criteria; inputs and privacy class; user supplied deadline; dependencies; status; deliverable links; head review; independent verification; QA evidence; code review (or N/A reason); security/privacy review; unresolved findings and owner; decision/date.

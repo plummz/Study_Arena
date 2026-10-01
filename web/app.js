@@ -8,6 +8,8 @@ import {
   IS_GITHUB_PAGES,
   IS_NATIVE,
   DUNGEON_WEB_URL,
+  APP_BUILD,
+  APP_VERSION_URL,
 } from "./config.js";
 import { reminders, pushRegistration } from "./native.js";
 import {
@@ -2753,6 +2755,24 @@ async function handleLink() {
     );
   }
 }
+// Installed Android apps can't update themselves silently (sideloaded APKs always need the
+// user's confirmation), so the app checks the published version once per launch and offers
+// the download. "Later" hides it until the next newer build.
+async function checkForAppUpdate() {
+  if (!IS_NATIVE || !navigator.onLine) return;
+  try {
+    const latest = await fetch(`${APP_VERSION_URL}?t=${Date.now()}`, { cache: "no-store" }).then((r) => r.json());
+    if (!(Number(latest.build) > APP_BUILD) || localStorage.getItem("update-dismissed") === String(latest.build)) return;
+    const apk = String(latest.apk || "");
+    if (!/^https:\/\/drive\.google\.com\//.test(apk)) return;
+    await modal(
+      "A new version of Study Arena is ready",
+      `<p>Version ${h(latest.version || latest.build)} is available. ${h(latest.notes || "")}</p><p class="caption">Download it, open the file and tap <strong>Update</strong>. You stay signed in and your study work is kept — no need to uninstall first.</p><div class="actions">${button("Download update", () => window.open(apk, "_blank"), "primary")}${button("Later", () => { localStorage.setItem("update-dismissed", String(latest.build)); $("#dialog").close(); }, "subtle")}</div>`,
+    );
+  } catch {
+    // Offline or the version file is unreachable: try again next launch.
+  }
+}
 async function boot() {
   if ("serviceWorker" in navigator && !window.Capacitor?.isNativePlatform?.()) {
     let refreshing = false;
@@ -2816,4 +2836,4 @@ setInterval(() => {
     }).catch(() => {});
   }
 }, 15000);
-boot().catch(showError);
+boot().then(checkForAppUpdate).catch(showError);

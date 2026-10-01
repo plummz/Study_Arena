@@ -175,7 +175,9 @@ func _process(delta: float) -> void:
 	if distance < 14.0:
 		var wanted := atan2(to_player.x, to_player.z)
 		rotation.y = lerp_angle(rotation.y, wanted, 1.0 - exp(-delta * (5.0 if awake else 0.0)))
-	if actor_kind == "enemy" and not awake and distance < 10.5:
+	# A crouching (sneaking) explorer is noticed at half the distance.
+	var notice := 5.2 if bool(player_target.get("crouching")) else 10.5
+	if actor_kind == "enemy" and not awake and distance < notice:
 		awaken()
 	if awake and not busy:
 		taunt_clock -= delta

@@ -2,7 +2,8 @@ class_name FirstPersonController
 extends CharacterBody3D
 ## First-person explorer for the Dungeon of Knowledge.
 ## Mouse / arrow keys / touch-drag look, WASD movement, run, jump, head bob,
-## a warm hand-lantern and a spell staff view model.
+## crouch (sneak: slower, lower, and skeletons notice you later), a warm hand-lantern and
+## a spell staff view model.
 
 signal footstep(running: bool)
 
@@ -13,6 +14,8 @@ const DECELERATION := 26.0
 const JUMP_VELOCITY := 6.2
 const GRAVITY := 19.0
 const EYE_HEIGHT := 1.62
+const CROUCH_EYE_HEIGHT := 1.05
+const CROUCH_SPEED_FACTOR := 0.55
 const STAFF_PATH := "res://assets/models/weapons/staff.gltf"
 
 var controls_enabled := true
@@ -39,6 +42,7 @@ var dead := false
 var speed_multiplier := 1.0
 var jump_multiplier := 1.0
 var lantern_boost := 1.0
+var crouching := false
 
 func _ready() -> void:
 	collision_layer = 2
@@ -139,20 +143,25 @@ func _physics_process(delta: float) -> void:
 	var wants_run := false
 	if controls_enabled and not action_locked:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-		wants_run = Input.is_action_pressed("run")
+		if Input.is_action_just_pressed("crouch"):
+			crouching = not crouching
+		wants_run = Input.is_action_pressed("run") and not crouching
 	var direction := (transform.basis * Vector3(input.x, 0.0, input.y))
 	direction.y = 0.0
 	direction = direction.normalized() * minf(1.0, input.length())
-	var speed := (RUN_SPEED if wants_run else WALK_SPEED) * speed_multiplier
+	var speed := (RUN_SPEED if wants_run else WALK_SPEED) * speed_multiplier * (CROUCH_SPEED_FACTOR if crouching else 1.0)
 	var change := ACCELERATION if direction.length_squared() > 0.0 else DECELERATION
 	velocity.x = move_toward(velocity.x, direction.x * speed, change * delta)
 	velocity.z = move_toward(velocity.z, direction.z * speed, change * delta)
 	if is_on_floor():
 		if controls_enabled and not action_locked and Input.is_action_just_pressed("jump"):
+			crouching = false
 			velocity.y = JUMP_VELOCITY * jump_multiplier
 	else:
 		velocity.y -= GRAVITY * delta
 	move_and_slide()
+	var eye := CROUCH_EYE_HEIGHT if crouching else EYE_HEIGHT
+	head.position.y = eye if reduced_motion else move_toward(head.position.y, eye, delta * 4.5)
 	_update_feel(delta, wants_run)
 
 func _update_feel(delta: float, running: bool) -> void:

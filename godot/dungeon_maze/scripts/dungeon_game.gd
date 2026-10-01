@@ -75,6 +75,16 @@ var feedback_pending := false
 var exit_open := false
 var auto_save_elapsed := 0.0
 var proximity_clock := 0.0
+# Performance: a device that keeps struggling on High drops to Low once (unless the player
+# chose a quality). Phones start on Low.
+var perf_clock := 0.0
+var perf_frames := 0
+var perf_time := 0.0
+var perf_slow_seconds := 0.0
+var render_scale := 1.0
+var fps_label: Label
+var settings_panel: PanelContainer
+var settings_from_pause := false
 var maze_seed := 0
 var resolved_encounters: Array[int] = []
 var triggered_traps: Array[int] = []
@@ -91,7 +101,7 @@ var map_open := false
 var selected_companion := "moss"
 var linked := false
 var launch_difficulty := ""
-var settings := {"sensitivity": 1.0, "touch_sensitivity": 1.0, "touch_size": 1.0, "invert_y": false, "fov": 74.0, "reduced_motion": false, "captions": true, "quality": "high", "volume": 0.8}
+var settings := {"sensitivity": 1.0, "touch_sensitivity": 1.0, "touch_size": 1.0, "show_fps": false, "quality_auto": true, "controls_opacity": 1.0, "left_handed": false, "vibration": true, "invert_y": false, "fov": 74.0, "reduced_motion": false, "captions": true, "quality": "high", "volume": 0.8}
 var world_env: Environment
 var effects_root: Node3D
 var hud: Control
@@ -163,8 +173,22 @@ func _ready() -> void:
 	# questions and HUD text when touch controls are active (visible is decided in their _ready).
 	if mobile_controls.visible:
 		get_window().content_scale_factor = 1.3
+		# Cap at 60 fps to limit heat. (3D resolution scaling was measured slower in the
+		# Compatibility renderer — 56 → 23 fps — so phones instead render at CSS-pixel
+		# resolution: display/window/dpi/allow_hidpi=false.)
+		Engine.max_fps = 60
+	# Diagnostic only: `-- --bench --render-scale=0.75` compares 3D resolution scaling.
+	var forced_scale := _argument_value("--render-scale=")
+	if not forced_scale.is_empty():
+		render_scale = clampf(float(forced_scale), 0.3, 1.0)
+		get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		get_viewport().scaling_3d_scale = render_scale
 	_apply_settings()
 	smoke_mode = "--smoke" in OS.get_cmdline_user_args()
+	if "--bench" in OS.get_cmdline_user_args():
+		linked = false
+		call_deferred("_run_benchmark")
+		return
 	var shot_dir := _argument_value("--screenshots=")
 	if not shot_dir.is_empty() and not OS.has_feature("web"):
 		linked = false
@@ -201,6 +225,17 @@ func _smoke_test() -> void:
 	assert(get_tree().get_nodes_in_group("snake").size() == int(DIFFICULTIES.easy.serpents))
 	assert(get_tree().get_nodes_in_group("trap").size() == int(DIFFICULTIES.easy.traps))
 	assert(player is FirstPersonController and player.camera.current)
+	# ENGAGE reaches an encounter 2 m away; crouching lowers the view and stays toggled.
+	var start_at := player.global_position
+	player.global_position = encounters[3].global_position + Vector3(2.0, 0.0, 0.0)
+	assert(engage_target() >= 0)
+	player.global_position = start_at
+	player.crouching = true
+	for f in 40: await get_tree().physics_frame
+	assert(player.head.position.y < FirstPersonController.EYE_HEIGHT - 0.3)
+	player.crouching = false
+	for f in 40: await get_tree().physics_frame
+	assert(is_equal_approx(player.head.position.y, FirstPersonController.EYE_HEIGHT))
 	assert(is_instance_valid(pet) and pet.left_arm.mesh is CapsuleMesh)
 	assert(kit.get_node_or_null("EntrancePortal") != null and kit.get_node_or_null("VictoryArch/MagicPortal") != null)
 	assert(is_instance_valid(pause_panel) and is_instance_valid(question_panel))
@@ -307,6 +342,25 @@ func _linked_smoke() -> void:
 	print("LINKED_SMOKE_PASS run_questions=%d server_answered=%s" % [questions.size(), str(answered)])
 	get_tree().quit()
 
+## Developer performance check: plays a run, turns slowly for 6 s after a 2 s warm-up and
+## prints the steady frame rate, e.g. `-- --bench --quality=low --touch-preview`.
+func _run_benchmark() -> void:
+	smoke_mode = true
+	_start_game("average")
+	await get_tree().create_timer(2.0).timeout
+	var frames := 0
+	var elapsed := 0.0
+	var worst := 0.0
+	while elapsed < 6.0:
+		await get_tree().process_frame
+		var d := get_process_delta_time()
+		player.yaw += d * 0.6
+		frames += 1
+		elapsed += d
+		worst = maxf(worst, d)
+	print("BENCH quality=%s scale=%.2f touch=%s fps=%.1f avg_ms=%.1f worst_ms=%.1f draw_calls=%d" % [settings.quality, get_viewport().scaling_3d_scale, str(mobile_controls.visible), frames / elapsed, 1000.0 * elapsed / frames, worst * 1000.0, RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
+	get_tree().quit()
+
 ## Developer visual check: renders a few fixed views to PNG files, then quits.
 func _capture_screenshots(dir: String) -> void:
 	smoke_mode = true
@@ -394,6 +448,12 @@ func _capture_screenshots(dir: String) -> void:
 	for i in 3:
 		boosts[i].set_meta("spent", false)
 		_collect_boost(boosts[i])
+	for f in 30: await get_tree().process_frame
+	get_viewport().get_texture().get_image().save_png(dir.path_join("07a_buffs.png"))
+	open_settings()
+	for f in 20: await get_tree().process_frame
+	get_viewport().get_texture().get_image().save_png(dir.path_join("07b_settings.png"))
+	close_settings()
 	map_panel.visible = true
 	for f in 60: await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(dir.path_join("07_map_after_slay.png"))
@@ -402,7 +462,7 @@ func _capture_screenshots(dir: String) -> void:
 	get_viewport().get_texture().get_image().save_png(dir.path_join("08_player_falls.png"))
 	await get_tree().create_timer(2.0).timeout
 	get_viewport().get_texture().get_image().save_png(dir.path_join("09_game_over.png"))
-	print("SCREENSHOTS_DONE %d" % (views.size() + 9))
+	print("SCREENSHOTS_DONE %d" % (views.size() + 11))
 	get_tree().quit()
 
 # ---------------------------------------------------------------- frame loop
@@ -418,6 +478,7 @@ func _process(delta: float) -> void:
 			caption_label.visible = false
 	if not running or not is_instance_valid(player):
 		return
+	_update_performance(delta)
 	var nearest_torch := kit.update_lights(player.global_position, delta)
 	audio.set_torch_proximity(1.0 - clampf(nearest_torch / 8.0, 0.0, 1.0))
 	_update_pet(delta)
@@ -440,12 +501,24 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("map"):
 		map_open = not map_open
 		map_panel.visible = map_open
+	if Input.is_action_just_pressed("interact") and current_encounter < 0 and not _ui_blocking():
+		var target := engage_target()
+		if target >= 0:
+			_open_encounter(target)
+		else:
+			_toast("No one close enough — walk up to a skeleton or scholar.", 2.0)
 	if map_open and is_instance_valid(map_view):
 		map_view.queue_redraw()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause") and running:
-		_toggle_pause()
+		if settings_panel != null and settings_panel.visible: close_settings()
+		else: _toggle_pause()
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("settings") and running:
+		if settings_panel != null and settings_panel.visible: close_settings()
+		else: open_settings()
 		get_viewport().set_input_as_handled()
 		return
 	if not question_panel.visible or is_run_paused:
@@ -472,7 +545,7 @@ func _notification(what: int) -> void:
 		get_tree().quit()
 
 func _ui_blocking() -> bool:
-	return question_panel.visible or pause_panel.visible or result_panel.visible or loading_panel.visible or get_node_or_null("PickerLayer") != null
+	return question_panel.visible or pause_panel.visible or (settings_panel != null and settings_panel.visible) or result_panel.visible or loading_panel.visible or get_node_or_null("PickerLayer") != null
 
 # ---------------------------------------------------------------- environment
 func _build_environment() -> void:
@@ -886,6 +959,55 @@ func _update_proximity(force_spawn: bool) -> void:
 	for boost in get_tree().get_nodes_in_group("boost"):
 		if not bool(boost.get_meta("seen", false)) and (boost as Node3D).global_position.distance_to(at) < 12.0:
 			boost.set_meta("seen", true)
+
+func _update_performance(delta: float) -> void:
+	perf_frames += 1
+	perf_time += delta
+	perf_clock += delta
+	if perf_clock < 1.0:
+		return
+	var fps := perf_frames / maxf(0.001, perf_time)
+	var ms := 1000.0 * perf_time / maxf(1.0, perf_frames)
+	perf_clock = 0.0
+	perf_frames = 0
+	perf_time = 0.0
+	if bool(settings.show_fps):
+		if fps_label == null:
+			fps_label = _label("", 15, C_INK)
+			fps_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+			fps_label.position.y = 118.0
+			hud.add_child(fps_label)
+		fps_label.visible = true
+		fps_label.text = "%d fps · %.1f ms" % [roundi(fps), ms]
+	elif fps_label != null:
+		fps_label.visible = false
+	if smoke_mode or is_run_paused or _ui_blocking():
+		return
+	if bool(settings.quality_auto) and settings.quality == "high":
+		perf_slow_seconds = perf_slow_seconds + 1.0 if fps < 28.0 else 0.0
+		if perf_slow_seconds >= 6.0:
+			settings.quality = "low"
+			_save_settings()
+			_apply_settings()
+			_toast("Switched to Low graphics for smoother play — change it in Pause → Settings.", 4.0)
+
+## Nearest unresolved encounter within reach (ENGAGE button / E key), or -1.
+func engage_target(reach := 4.5) -> int:
+	if not running or current_encounter >= 0 or not is_instance_valid(player):
+		return -1
+	var best := -1
+	var best_distance := reach
+	for encounter in encounters:
+		if not is_instance_valid(encounter) or encounter.is_queued_for_deletion():
+			continue
+		var id := int(encounter.get_meta("encounter_id"))
+		if resolved_encounters.has(id):
+			continue
+		var distance := encounter.global_position.distance_to(player.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = id
+	return best
 
 func _actor_of(encounter: Node) -> DungeonActor:
 	if not is_instance_valid(encounter) or not encounter.has_meta("actor"):
@@ -1858,6 +1980,30 @@ func _toggle_pause() -> void:
 		if current_encounter < 0: _capture_mouse()
 		_toast("Adventure resumed.")
 
+## Opens the Settings panel (gear button, O key, or Pause -> Settings). The run stays paused
+## while it is open; closing returns to the pause menu or straight back to the dungeon.
+func open_settings() -> void:
+	if settings_panel == null or not running:
+		return
+	settings_from_pause = pause_panel.visible
+	if not is_run_paused:
+		is_run_paused = true
+		player.controls_enabled = false
+		_release_mouse()
+	pause_panel.visible = false
+	settings_panel.visible = true
+
+func close_settings() -> void:
+	if settings_panel == null:
+		return
+	settings_panel.visible = false
+	if settings_from_pause:
+		pause_panel.visible = true
+		return
+	is_run_paused = false
+	player.controls_enabled = current_encounter < 0
+	if current_encounter < 0: _capture_mouse()
+
 func _save_and_return_home() -> void:
 	_save_progress()
 	_open_study_arena()
@@ -2006,6 +2152,9 @@ func _apply_settings() -> void:
 		player.base_fov = float(settings.fov)
 		player.reduced_motion = bool(settings.reduced_motion)
 	if is_instance_valid(mobile_controls):
+		mobile_controls.left_handed = bool(settings.left_handed)
+		mobile_controls.vibration = bool(settings.vibration)
+		mobile_controls.modulate.a = float(settings.controls_opacity)
 		mobile_controls.set_scale_factor(float(settings.touch_size))
 	var high: bool = settings.quality == "high"
 	if is_instance_valid(kit):
@@ -2037,7 +2186,7 @@ float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.545
 void fragment() {
 	vec2 p = UV - 0.5;
 	float v = smoothstep(0.28, 0.8, length(p * vec2(1.3, 1.0)));
-	float n = hash(floor(UV * vec2(640.0, 360.0)) + fract(TIME * 7.0) * 113.0) - 0.5;
+	float n = grain > 0.0 ? hash(floor(UV * vec2(640.0, 360.0)) + fract(TIME * 7.0) * 113.0) - 0.5 : 0.0;
 	vec3 tint = mix(vec3(0.02, 0.0, 0.03), vec3(0.6, 0.02, 0.08), damage);
 	tint = mix(tint, vec3(0.45, 0.9, 0.6), heal);
 	float a = v * vignette + damage * (0.12 + 0.55 * v) + heal * 0.4 * v + abs(n) * grain;
@@ -2272,34 +2421,88 @@ func _build_pause_panel() -> void:
 	stack.add_child(buttons)
 	buttons.add_child(_button("Resume", "primary", _toggle_pause))
 	buttons.add_child(_button("Save & return to Study Arena", "secondary", _save_and_return_home))
-	stack.add_child(HSeparator.new())
-	var settings_title := _label("Settings", 18, C_SAGE)
-	stack.add_child(settings_title)
-	var form := GridContainer.new()
-	form.columns = 2
-	form.add_theme_constant_override("h_separation", 16)
-	form.add_theme_constant_override("v_separation", 6)
-	stack.add_child(form)
-	_slider_row(form, "Look sensitivity (mouse)", "sensitivity", 0.3, 2.5, 0.05)
-	_slider_row(form, "Touch look speed", "touch_sensitivity", 0.2, 2.5, 0.05)
-	_slider_row(form, "Touch control size", "touch_size", 0.8, 1.5, 0.05)
-	_slider_row(form, "Field of view", "fov", 60.0, 95.0, 1.0)
-	_slider_row(form, "Volume", "volume", 0.0, 1.0, 0.05)
-	_check_row(form, "Invert look (Y)", "invert_y")
-	_check_row(form, "Reduced motion (no bob, shake or flicker)", "reduced_motion")
-	_check_row(form, "Sound captions", "captions")
-	form.add_child(_label("Graphics quality", 16, C_INK))
-	var quality := OptionButton.new()
-	quality.add_item("High — more torchlight, glow, embers")
-	quality.add_item("Low — faster on phones and older laptops")
-	quality.selected = 0 if settings.quality == "high" else 1
-	quality.item_selected.connect(func(index: int): settings.quality = "high" if index == 0 else "low"; _save_settings(); _apply_settings())
-	form.add_child(quality)
+	var more := HBoxContainer.new()
+	more.add_theme_constant_override("separation", 10)
+	more.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_child(more)
+	more.add_child(_button("Settings", "secondary", open_settings))
 	var note := _label("Your maze, position, timer and resolved encounters are saved on this device. Signed-in runs keep coins on Study Arena.", 13, C_MUTED)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stack.add_child(note)
 	hud.add_child(pause_panel)
 	pause_panel.visible = false
+	_build_settings_panel()
+
+const SETTING_DEFAULTS := {"sensitivity": 1.0, "touch_sensitivity": 1.0, "touch_size": 1.0, "controls_opacity": 1.0, "left_handed": false, "vibration": true, "fov": 74.0, "volume": 0.8, "invert_y": false, "reduced_motion": false, "captions": true, "show_fps": false}
+
+func _build_settings_panel() -> void:
+	settings_panel = _center_panel(Vector2(760, 500))
+	var stack := _stack(settings_panel, 8)
+	var heading := _label("SETTINGS", 26, C_INK)
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stack.add_child(heading)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(700, 340)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stack.add_child(scroll)
+	var sections := VBoxContainer.new()
+	sections.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sections.add_theme_constant_override("separation", 10)
+	scroll.add_child(sections)
+	var controls_form := _settings_section(sections, "Controls")
+	_slider_row(controls_form, "Touch look speed", "touch_sensitivity", 0.2, 2.5, 0.05)
+	_slider_row(controls_form, "Touch control size", "touch_size", 0.8, 1.5, 0.05)
+	_slider_row(controls_form, "Touch control opacity", "controls_opacity", 0.35, 1.0, 0.05)
+	_check_row(controls_form, "Left-handed layout (swap sides)", "left_handed")
+	_check_row(controls_form, "Vibrate on button press", "vibration")
+	_slider_row(controls_form, "Mouse look sensitivity", "sensitivity", 0.3, 2.5, 0.05)
+	_check_row(controls_form, "Invert look (Y)", "invert_y")
+	var display_form := _settings_section(sections, "Display & performance")
+	display_form.add_child(_label("Graphics quality", 16, C_INK))
+	var quality := OptionButton.new()
+	quality.add_item("High — more torchlight, glow, embers")
+	quality.add_item("Low — faster on phones and older laptops")
+	quality.selected = 0 if settings.quality == "high" else 1
+	quality.item_selected.connect(func(index: int): settings.quality = "high" if index == 0 else "low"; settings.quality_auto = false; _save_settings(); _apply_settings())
+	display_form.add_child(quality)
+	_slider_row(display_form, "Field of view", "fov", 60.0, 95.0, 1.0)
+	_check_row(display_form, "Show frame rate (fps · ms)", "show_fps")
+	var sound_form := _settings_section(sections, "Sound & accessibility")
+	_slider_row(sound_form, "Volume", "volume", 0.0, 1.0, 0.05)
+	_check_row(sound_form, "Sound captions", "captions")
+	_check_row(sound_form, "Reduced motion (no bob, shake or flicker)", "reduced_motion")
+	var keys := _label("Keyboard: WASD move · Shift run · Space jump · C crouch · E engage · M map · O settings · Esc pause", 13, C_MUTED)
+	keys.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sections.add_child(keys)
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 10)
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_child(buttons)
+	buttons.add_child(_button("Reset to defaults", "secondary", _reset_settings))
+	buttons.add_child(_button("Done", "primary", close_settings))
+	hud.add_child(settings_panel)
+	settings_panel.visible = false
+
+func _settings_section(parent: Container, title: String) -> GridContainer:
+	parent.add_child(_label(title, 18, C_SAGE))
+	var form := GridContainer.new()
+	form.columns = 2
+	form.add_theme_constant_override("h_separation", 16)
+	form.add_theme_constant_override("v_separation", 6)
+	parent.add_child(form)
+	return form
+
+func _reset_settings() -> void:
+	for key: String in SETTING_DEFAULTS:
+		settings[key] = SETTING_DEFAULTS[key]
+	_save_settings()
+	_apply_settings()
+	var was_open := settings_panel.visible
+	settings_panel.queue_free()
+	_build_settings_panel()
+	settings_panel.visible = was_open
+	_toast("Settings reset to defaults.", 2.0)
 
 func _slider_row(form: GridContainer, text: String, key: String, low: float, high: float, step: float) -> void:
 	form.add_child(_label(text, 16, C_INK))

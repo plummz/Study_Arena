@@ -3,6 +3,12 @@
 Read this file first, then [AGENTS.md](AGENTS.md) (workflow, task board, privacy rules). Keep
 this file current when the setup changes. Last updated 2026-10-01.
 
+> **Standing task from the owner:** after any change that affects the Android app (`web/` or
+> `android/`), release a new APK yourself — rebuild it and **replace the APK in Google Drive**
+> (My Drive → `ANDROID APPS` → `app-debug.apk`,
+> https://drive.google.com/file/d/19TGfVueG9Yovb_y46JUjtTls-_Sv92in/view). Follow
+> [Releasing a new APK](#releasing-a-new-apk) below. The owner should not have to do this.
+
 ## What the project is
 
 | Part | Folder | Runs where |
@@ -35,7 +41,9 @@ The `android/` Capacitor project was opened and built in **Android Studio Quail 
   to the Railway API (address from the `study-arena-api` meta tag in `web/index.html`; the server
   accepts the app's origin `https://localhost`).
 - In the app, the dungeon opens the published web dungeon in the phone's browser
-  (`DUNGEON_WEB_URL` in `web/config.js`), because the app has no local game server.
+  (`DUNGEON_WEB_URL` in `web/config.js`), because the app has no local game server. On phones
+  its first tap goes fullscreen and locks landscape (script in `html/head_include` of
+  `godot/dungeon_maze/export_presets.cfg`); upright phones see a "Tap to play in landscape" cover.
 
 ## Rebuild and run after changes
 
@@ -57,6 +65,33 @@ JAVA_HOME="D:/Android/jdk-21" ./gradlew.bat assembleDebug     # Git Bash
 Output: `android/app/build/outputs/apk/debug/app-debug.apk` (install on a phone by opening the
 file and allowing "Install unknown apps"). A Play Store release needs Build → Generate Signed
 App Bundle and a keystore that must be backed up — losing it blocks all future updates.
+
+## Releasing a new APK
+
+Installed apps check `https://plummz.github.io/Study_Arena/app-version.json` at launch and,
+when its `build` is higher than their own `APP_BUILD`, offer **Download update** (opens the
+Drive link). Sideloaded apps cannot update silently — Android always asks the user to confirm;
+fully automatic updates would need the Play Store.
+
+1. Bump the build number in **three** places, all to the same new integer:
+   `APP_BUILD` in `web/config.js`, `"build"` (and `"version"`, `"notes"`) in
+   `web/app-version.json`, and `versionCode` (and `versionName`) in `android/app/build.gradle`.
+2. Run the tests, then `npx cap sync android` and build the APK (command above).
+3. **Replace the file in Drive, keeping its link:** copy
+   `android/app/build/outputs/apk/debug/app-debug.apk` over
+   `G:\My Drive\ANDROID APPS\app-debug.apk` using **Google Drive for desktop** (installed on the
+   owner's PC; it must be running and signed in to show the `G:` drive). Overwriting through
+   Drive for desktop keeps the same file id and share link. Do not delete-and-re-upload through
+   the web — that creates a new link and breaks `app-version.json` and anything shared. The
+   Google Drive connector (MCP) cannot replace file contents or upload a 10 MB APK.
+   If `G:` is missing, ask the owner to open Google Drive for desktop and sign in.
+4. Confirm the Drive file's size/modified time changed (Drive connector `get_file_metadata`
+   on id `19TGfVueG9Yovb_y46JUjtTls-_Sv92in`).
+5. Push to `main` so Pages publishes the new `app-version.json` (after the APK is in Drive, so
+   the prompt never points at an old file).
+
+Dungeon-only or server-only changes need no APK — the app loads the web dungeon and the
+Railway API live.
 
 ## Local development and tests (Windows)
 
@@ -87,9 +122,14 @@ Godot 4.7.2: `C:\Users\johnr\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.
 ```bash
 godot --headless --path godot/dungeon_maze -- --smoke                    # gameplay self-test
 godot --path godot/dungeon_maze --resolution 1600x720 -- --screenshots=<dir> --touch-preview
+godot --path godot/dungeon_maze --resolution 1600x720 -- --bench --quality=low --touch-preview
 ```
 
-`--touch-preview` shows the phone touch controls on a desktop for screenshot checks.
+`--touch-preview` shows the phone touch controls on a desktop. `--bench` prints steady fps/ms
+(`--render-scale=0.75` is a diagnostic only). Measured on the owner's laptop (Compatibility
+renderer): 3D resolution scaling made frames *slower* (56 → 23 fps), and redrawing the touch
+controls every frame halved the frame rate — so phones render at CSS-pixel resolution
+(`display/window/dpi/allow_hidpi=false`) and the controls redraw only on change.
 
 Run the app locally: `node scripts/start-windows.mjs` with `JAVA_BIN` set (reads only
 `GEMINI_API_KEY` / `GEMINI_MODEL` from `.env`); open `http://localhost:8080`, demo accounts

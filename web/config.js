@@ -11,6 +11,11 @@ export const IS_GITHUB_PAGES =
 export const IS_NATIVE = Boolean(
   globalThis.window?.Capacitor?.isNativePlatform?.(),
 );
+// Android app build number. Bump together with versionCode in android/app/build.gradle and
+// "build" in web/app-version.json whenever a new APK is released (see START_HERE.md).
+export const APP_BUILD = 2;
+// Published on GitHub Pages; installed apps compare APP_BUILD with it and offer the update.
+export const APP_VERSION_URL = "https://plummz.github.io/Study_Arena/app-version.json";
 // The published WebAssembly dungeon, opened from the Android app (which has no local game server).
 export const DUNGEON_WEB_URL = "https://plummz.github.io/Study_Arena/dungeon/index.html";
 const IS_LOCAL_SERVER =

@@ -11,11 +11,21 @@ Start it locally from the repository root with `Start-Dungeon-Maze.cmd`.
 - M: map · Escape: pause, settings, save, or return to Study Arena
 - Walk up to a skeleton or scholar to open its question; 1–4 answer, H hint, Enter continue
 
-On phones and tablets, rotate to landscape: the left stick moves, dragging the right
-half looks around, RUN (toggle) and JUMP sit bottom-right, and pause (II) and MAP sit
-upper-left. Controls are sized from the screen's short side, and the whole interface is
-enlarged 30% on touch screens. Pause → Settings has **Touch look speed** and **Touch
-control size** (saved on the device). `-- --touch-preview` shows the controls on a desktop.
+On phones and tablets the first tap goes fullscreen and locks landscape (an upright phone
+shows a "Tap to play in landscape" cover). Touch controls follow a shooter layout: a floating
+movement stick bottom-left; a large **ENGAGE** button bottom-right (glows gold when a skeleton or
+scholar is within reach and starts that encounter) with **JUMP**, **CROUCH** and **RUN** around it;
+active relic buffs as round badges above that cluster; **PAUSE**, **MAP** and **SETTINGS**
+upper-left; drag the right side to look. Crouching (C / CROUCH) is slower and lower, and
+skeletons notice you at half the distance. Controls are sized from the screen's short side and
+the interface is enlarged 30% on touch screens.
+
+**Settings** (gear button, O key, or Pause → Settings): touch look speed, touch control size,
+control opacity, left-handed layout, vibration, mouse sensitivity, invert look, graphics
+quality, field of view, frame-rate readout, volume, captions and reduced motion; Reset to
+defaults. Saved on the device. A desktop that stays under 28 fps on High for 6 s switches to
+Low once unless the player chose a quality. `-- --touch-preview` shows the touch controls on a
+desktop; `-- --bench` prints steady fps.
 
 GitHub Pages must use **GitHub Actions** as its publishing source; the legacy
 "Deploy from a branch" source omits the generated WebAssembly dungeon.
